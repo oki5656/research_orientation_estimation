@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 import os
 import sys
 import math
-import time
+import random
 import numpy as np
 from tqdm import tqdm
 import decimal
@@ -57,7 +57,7 @@ def CalcAngleErr(output, label, batch_size):
     return angleErrSum/batch_size
 
 
-def MakeBatch(train_x_df, train_t_df, batch_size, selected_train_columns, selected_correct_columns):
+def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_random_list):
     """
     train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)とdir_vec(sequence_length, batch_size, input_size)を返す
     """
@@ -76,9 +76,15 @@ def MakeBatch(train_x_df, train_t_df, batch_size, selected_train_columns, select
     #####################################################################################################################
     out_x = list()
     out_t = list()
-    sequence_length = 20
-    for _ in range(batch_size):
-        idx = np.random.randint(3, len(train_x_df) - batch_size - sequence_length -10 )
+    batch_length = len(mini_batch_random_list)
+    if batch_length == 8:
+        batch_size = 8
+    else:
+        batch_size=len(mini_batch_random_list)
+
+    for i in range(batch_size):
+        # idx = np.random.randint(3, len(train_x_df) - batch_size - sequence_length -10 )
+        idx = mini_batch_random_list[i]*sequence_length
         out_x.append(np.array(train_x_df[idx : idx + sequence_length]))
         out_t.append(np.array(train_t_df[idx : idx + sequence_length + 1]))
     out_x = np.array(out_x)
@@ -122,7 +128,7 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length):
                     [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
                     [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])#クォータニオン表現による回転行列
             old_dir = np.array([batch_t_df_np[i+1][j][0] - batch_t_df_np[i][j][0], batch_t_df_np[i+1][j][1] - batch_t_df_np[i][j][1], batch_t_df_np[i+1][j][2] - batch_t_df_np[i][j][2]])#２点の位置から進行方向ベクトルを求めた
-            new_dir = np.matmul(E, old_dir.T)##############################################################  転地するかも
+            new_dir = np.matmul(E.T, old_dir.T)##############################################################  転地するかも
             dir_vec[i][j][0], dir_vec[i][j][1], dir_vec[i][j][2] = new_dir[0], new_dir[1], new_dir[2]
     # print("dir_vec.shape", dir_vec.shape)
     return dir_vec
@@ -146,16 +152,16 @@ class Predictor(nn.Module):
 
 
 def main():
-    training_size = 10000
-    test_size = 200
-    epochs_num = 50
+    epochs_num = 200
     hidden_size = 50
     batch_size = 8
+    sequence_length = 20
     output_dim = 3#進行方向ベクトル
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
-    print()
+    train_data_num = len(train_x_df)
+    test_data_num = len(test_x_df)
 
     # 基本
     model = Predictor(len(selected_train_columns), hidden_size, output_dim)
@@ -164,20 +170,33 @@ def main():
     optimizer = SGD(model.parameters(), lr=0.01)
     old_test_accurancy=0
 
+    # イテレーション数計算
+    train_iter_num = int(train_data_num/(sequence_length*batch_size))
+    test_iter_num = int(test_data_num/(sequence_length*batch_size))
+
     for epoch in range(epochs_num):
-        print("start", epoch, "epoch")
+        print("\nstart", epoch, "epoch")
         running_loss = 0.0
         # training_accuracy = 0.0
         angleErrSum = 0
-        for i in tqdm(range(int(training_size/batch_size))):##############################################ここが微妙
-            optimizer.zero_grad()
+        train_mini_data_num = int(train_data_num/sequence_length)
+        test_mini_data_num = int(test_data_num/sequence_length)
+        train_random_num_list = random.sample(range(1, train_mini_data_num), k=train_mini_data_num-1)
+        test_random_num_list = random.sample(range(1, test_mini_data_num), k=test_mini_data_num-1)
 
-            data, label = MakeBatch(train_x_df, train_t_df, batch_size, selected_train_columns, selected_correct_columns)
+        # iteration loop
+        for i in tqdm(range(train_iter_num)):##############################################ここが微妙
+            optimizer.zero_grad()
+            # make mini batch random list
+            mini_batch_train_random_list =[]
+            for _ in range(batch_size):
+                mini_batch_train_random_list.append(train_random_num_list.pop())
+
+            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_train_random_list)
             output = model(data.float())
             if np.isnan(output.detach().numpy()).any():
                 print('Nan was found. So system break.')
                 sys.exit()
-                # break
             # print("############# output.shape = ", output.shape)#torch.Size([1, 8, 7])
             # print("############# label.shape = ", label.shape)#torch.Size([1, 8, 3])
             angleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
@@ -191,35 +210,29 @@ def main():
             
         ## 絶対平均誤差を算出 ##
         # MAE = 0.0
-        MAE_tr = angleErrSum/int(training_size/batch_size)
+        MAE_tr = angleErrSum/train_iter_num
         # print(angleErrSum)
         tqdm.write(("train mean angle error = "+ str(MAE_tr)))
         # tqdm.write('end of epoch !!%d loss: %.3f, training_accuracy: %.5f' % (epoch + 1, running_loss, training_accuracy))
 
         #test
-        test_accuracy = 0.0
-        angleErrSum = 0
-        for i in range(int(test_size / batch_size)):
-            offset = i * batch_size
-            # data, label = torch.tensor(test_x[offset:offset+batch_size]), torch.tensor(test_t[offset:offset+batch_size])
-            data, label = MakeBatch(test_x_df, test_t_df, batch_size, selected_train_columns, selected_correct_columns)
+        TestAngleErrSum = 0
+        mini_batch_test_random_list =[]
+        for _ in range(batch_size):
+            mini_batch_test_random_list.append(test_random_num_list.pop())
+
+        for i in tqdm(range(test_iter_num)):
+            data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_test_random_list)
             output = model(data.float(), None)
-            angleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            TestAngleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
             loss = criterion(output.float(), label.float())
 
-        MAE_te = angleErrSum/int(test_size/batch_size)
+        MAE_te = TestAngleErrSum/test_iter_num
         tqdm.write(("test mean angle error = "+ str(MAE_te)))
-            # test_accuracy += np.sum(np.abs((output.data - label.data).numpy()) < 0.1)
-        
-        # training_accuracy /= training_size
-        # test_accuracy /= test_size
+
         # if test_accuracy>old_test_accurancy:
         #     model_weight_path=os.path.join(weight_path,"best_acc_weight.pt")
         #     torch.save(model.state_dict(), model_weight_path)
-        # old_test_accurancy=test_accuracy
-
-        # tqdm.write('%d loss: %.3f, training_accuracy: %.5f, test_accuracy: %.5f' % (
-        #     epoch + 1, running_loss, training_accuracy, test_accuracy))
 
 
 if __name__ == '__main__':

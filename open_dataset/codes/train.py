@@ -152,7 +152,7 @@ class Predictor(nn.Module):
 
 
 def main():
-    epochs_num = 200
+    epochs_num = 50
     hidden_size = 50
     batch_size = 8
     sequence_length = 20
@@ -169,6 +169,10 @@ def main():
     criterion = nn.MSELoss()
     optimizer = SGD(model.parameters(), lr=0.01)
     old_test_accurancy=0
+    TrainAngleErrResult = []
+    TestAngleErrResult = []
+    TrainLossResult = []
+    TestLossResult = []
 
     # イテレーション数計算
     train_iter_num = int(train_data_num/(sequence_length*batch_size))
@@ -207,10 +211,11 @@ def main():
             optimizer.step()
 
             running_loss += loss.data
-            
+        TrainLossResult.append(running_loss)
         ## 絶対平均誤差を算出 ##
         # MAE = 0.0
         MAE_tr = angleErrSum/train_iter_num
+        TrainAngleErrResult.append(MAE_tr)
         # print(angleErrSum)
         tqdm.write(("train mean angle error = "+ str(MAE_tr)))
         # tqdm.write('end of epoch !!%d loss: %.3f, training_accuracy: %.5f' % (epoch + 1, running_loss, training_accuracy))
@@ -226,13 +231,30 @@ def main():
             output = model(data.float(), None)
             TestAngleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
             loss = criterion(output.float(), label.float())
-
+        TestLossResult.append(loss.detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
+        TestAngleErrResult.append(MAE_te)
         tqdm.write(("test mean angle error = "+ str(MAE_te)))
 
+        # weight saving
         # if test_accuracy>old_test_accurancy:
         #     model_weight_path=os.path.join(weight_path,"best_acc_weight.pt")
         #     torch.save(model.state_dict(), model_weight_path)
+    # graph plotting
+    fig = plt.figure(figsize = [5.8, 4])
+    ax1 = fig.add_subplot(2, 2, 1)
+    ax2 = fig.add_subplot(2, 2, 2)
+    ax3 = fig.add_subplot(2, 2, 3)
+    ax4 = fig.add_subplot(2, 2, 4)
+    ax1.plot(TrainAngleErrResult)
+    ax2.plot(TrainLossResult)
+    ax3.plot(TestAngleErrResult)
+    ax4.plot(TestLossResult)
+    ax1.set_title("train angle error")
+    ax2.set_title("train loss")
+    ax3.set_xlabel("test angle error")
+    ax4.set_xlabel("test loss")
+    plt.show()
 
 
 if __name__ == '__main__':

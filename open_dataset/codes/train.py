@@ -152,7 +152,7 @@ class Predictor(nn.Module):
 
 
 def main():
-    epochs_num = 50
+    epochs_num = 100
     hidden_size = 50
     batch_size = 8
     sequence_length = 20
@@ -166,13 +166,14 @@ def main():
     # 基本
     model = Predictor(len(selected_train_columns), hidden_size, output_dim)
     model = model.float()
-    criterion = nn.MSELoss()
-    optimizer = SGD(model.parameters(), lr=0.01)
+    criterion = nn.L1Loss()#nn.MSELoss()
+    optimizer = SGD(model.parameters(), lr=0.001)
     old_test_accurancy=0
     TrainAngleErrResult = []
     TestAngleErrResult = []
     TrainLossResult = []
     TestLossResult = []
+    BestMAE = 360
 
     # イテレーション数計算
     train_iter_num = int(train_data_num/(sequence_length*batch_size))
@@ -211,7 +212,7 @@ def main():
             optimizer.step()
 
             running_loss += loss.data
-        TrainLossResult.append(running_loss)
+        TrainLossResult.append(loss.detach().numpy())
         ## 絶対平均誤差を算出 ##
         # MAE = 0.0
         MAE_tr = angleErrSum/train_iter_num
@@ -222,6 +223,7 @@ def main():
 
         #test
         TestAngleErrSum = 0
+        
         mini_batch_test_random_list =[]
         for _ in range(batch_size):
             mini_batch_test_random_list.append(test_random_num_list.pop())
@@ -234,7 +236,9 @@ def main():
         TestLossResult.append(loss.detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
         TestAngleErrResult.append(MAE_te)
-        tqdm.write(("test mean angle error = "+ str(MAE_te)))
+        tqdm.write(("Test mean angle error = "+ str(MAE_te)))
+        BestMAE = min(BestMAE, MAE_te)
+        tqdm.write("Best mean absolute error = "+ str(BestMAE))
 
         # weight saving
         # if test_accuracy>old_test_accurancy:

@@ -10,7 +10,7 @@ from cmath import isnan
 import torch
 import torch.nn as nn
 import pandas as pd
-from torch.optim import SGD
+from torch.optim import SGD, lr_scheduler
 from matplotlib import pyplot as plt
 import os
 import sys
@@ -152,11 +152,12 @@ class Predictor(nn.Module):
 
 
 def main():
-    epochs_num = 100
+    epochs_num = 200
     hidden_size = 50
     batch_size = 8
     sequence_length = 20
     output_dim = 3#進行方向ベクトル
+    lr = 0.0005
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
@@ -167,7 +168,8 @@ def main():
     model = Predictor(len(selected_train_columns), hidden_size, output_dim)
     model = model.float()
     criterion = nn.L1Loss()#nn.MSELoss()
-    optimizer = SGD(model.parameters(), lr=0.001)
+    optimizer = SGD(model.parameters(), lr=lr)
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=8, eta_min=lr*0.01, last_epoch=- 1, verbose=True)
     old_test_accurancy=0
     TrainAngleErrResult = []
     TestAngleErrResult = []
@@ -212,6 +214,7 @@ def main():
             optimizer.step()
 
             running_loss += loss.data
+        scheduler.step()
         TrainLossResult.append(loss.detach().numpy())
         ## 絶対平均誤差を算出 ##
         # MAE = 0.0

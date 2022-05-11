@@ -12,8 +12,6 @@ import torch.nn as nn
 import pandas as pd
 from torch.optim import SGD, lr_scheduler
 from matplotlib import pyplot as plt
-import os
-import sys
 import math
 import random
 import numpy as np
@@ -23,7 +21,7 @@ import optuna
 
 #############################################  config  ##################################################
 weight_path = os.path.join("..","weights")
-train_data_path = os.path.join("..","datasets", "dataset-room1_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+train_data_path = os.path.join("..","datasets", "dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 test_data_path = os.path.join("..","datasets", "dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
@@ -158,7 +156,7 @@ def objective(trial):
     # hidden_size = 50
     batch_size = trial.suggest_int('batch_size', 4, 32)
     # batch_size = 8
-    epochs_num = 20
+    epochs_num = 30
     sequence_length = 20
     output_dim = 3#進行方向ベクトル
     lr = trial.suggest_float('lr', 0.00001, 0.01, log=True)
@@ -220,16 +218,15 @@ def objective(trial):
             running_loss += loss.data
         # scheduler.step()
         TrainLossResult.append(loss.detach().numpy())
+
         ## 絶対平均誤差を算出 ##
-        # MAE = 0.0
         MAE_tr = angleErrSum/train_iter_num
         TrainAngleErrResult.append(MAE_tr)
         # print(angleErrSum)
         tqdm.write(("train mean angle error = "+ str(MAE_tr)))
 
-        #test
+        # test
         TestAngleErrSum = 0
-        
         mini_batch_test_random_list =[]
         for _ in range(batch_size):
             mini_batch_test_random_list.append(test_random_num_list.pop())
@@ -244,7 +241,7 @@ def objective(trial):
         TestAngleErrResult.append(MAE_te)
         tqdm.write(("Test mean angle error = "+ str(MAE_te)))
         BestMAE = min(BestMAE, MAE_te)
-        tqdm.write("Best mean absolute error = "+ str(BestMAE))
+        tqdm.write("Best mean absolute test error = "+ str(BestMAE))
 
     # graph plotting
     # fig = plt.figure(figsize = [5.8, 4])
@@ -262,13 +259,13 @@ def objective(trial):
     # ax4.set_xlabel("test loss")
     # plt.show()
     print("finished objective")
-    return MAE_tr
+    return MAE_te
 
 
 if __name__ == '__main__':
     if not os.path.isdir(weight_path):
         os.mkdir(weight_path)
     # main()
-    TRIAL_SIZE = 10
+    TRIAL_SIZE = 30
     study = optuna.create_study()
     study.optimize(objective, n_trials=TRIAL_SIZE)

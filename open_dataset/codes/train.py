@@ -152,12 +152,12 @@ class Predictor(nn.Module):
 
 
 def main():
-    epochs_num = 200
-    hidden_size = 50
-    batch_size = 8
+    epochs_num = 350
+    hidden_size = 24
+    batch_size = 7
     sequence_length = 20
     output_dim = 3#進行方向ベクトル
-    lr = 0.0005
+    lr = 0.0001932211298
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)

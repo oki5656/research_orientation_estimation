@@ -19,6 +19,7 @@ import random
 import numpy as np
 from tqdm import tqdm
 import decimal
+import optuna
 
 #############################################  config  ##################################################
 weight_path = os.path.join("..","weights")
@@ -151,13 +152,17 @@ class Predictor(nn.Module):
         return output
 
 
-def main():
-    epochs_num = 200
-    hidden_size = 50
-    batch_size = 8
+def objective(trial):
+    print("start objective")
+    hidden_size = trial.suggest_int('hidden_size', 5, 100)
+    # hidden_size = 50
+    batch_size = trial.suggest_int('batch_size', 4, 32)
+    # batch_size = 8
+    epochs_num = 20
     sequence_length = 20
     output_dim = 3#進行方向ベクトル
-    lr = 0.0005
+    lr = trial.suggest_float('lr', 0.00001, 0.01, log=True)
+    # lr = 0.0005
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
@@ -169,7 +174,7 @@ def main():
     model = model.float()
     criterion = nn.L1Loss()#nn.MSELoss()
     optimizer = SGD(model.parameters(), lr=lr)
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=8, eta_min=lr*0.01, last_epoch=- 1, verbose=True)
+    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=8, eta_min=lr*0.01, last_epoch=- 1, verbose=True)
     old_test_accurancy=0
     TrainAngleErrResult = []
     TestAngleErrResult = []
@@ -192,7 +197,7 @@ def main():
         test_random_num_list = random.sample(range(1, test_mini_data_num), k=test_mini_data_num-1)
 
         # iteration loop
-        for i in tqdm(range(train_iter_num)):##############################################ここが微妙
+        for i in tqdm(range(train_iter_num-1)):
             optimizer.zero_grad()
             # make mini batch random list
             mini_batch_train_random_list =[]
@@ -209,12 +214,11 @@ def main():
             angleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
             
             loss = criterion(output.float(), label.float())
-            # tqdm.write(str(label))# + str(loss) + str(label))
             loss.backward()
             optimizer.step()
 
             running_loss += loss.data
-        scheduler.step()
+        # scheduler.step()
         TrainLossResult.append(loss.detach().numpy())
         ## 絶対平均誤差を算出 ##
         # MAE = 0.0
@@ -222,7 +226,6 @@ def main():
         TrainAngleErrResult.append(MAE_tr)
         # print(angleErrSum)
         tqdm.write(("train mean angle error = "+ str(MAE_tr)))
-        # tqdm.write('end of epoch !!%d loss: %.3f, training_accuracy: %.5f' % (epoch + 1, running_loss, training_accuracy))
 
         #test
         TestAngleErrSum = 0
@@ -243,28 +246,29 @@ def main():
         BestMAE = min(BestMAE, MAE_te)
         tqdm.write("Best mean absolute error = "+ str(BestMAE))
 
-        # weight saving
-        # if test_accuracy>old_test_accurancy:
-        #     model_weight_path=os.path.join(weight_path,"best_acc_weight.pt")
-        #     torch.save(model.state_dict(), model_weight_path)
     # graph plotting
-    fig = plt.figure(figsize = [5.8, 4])
-    ax1 = fig.add_subplot(2, 2, 1)
-    ax2 = fig.add_subplot(2, 2, 2)
-    ax3 = fig.add_subplot(2, 2, 3)
-    ax4 = fig.add_subplot(2, 2, 4)
-    ax1.plot(TrainAngleErrResult)
-    ax2.plot(TrainLossResult)
-    ax3.plot(TestAngleErrResult)
-    ax4.plot(TestLossResult)
-    ax1.set_title("train angle error")
-    ax2.set_title("train loss")
-    ax3.set_xlabel("test angle error")
-    ax4.set_xlabel("test loss")
-    plt.show()
+    # fig = plt.figure(figsize = [5.8, 4])
+    # ax1 = fig.add_subplot(2, 2, 1)
+    # ax2 = fig.add_subplot(2, 2, 2)
+    # ax3 = fig.add_subplot(2, 2, 3)
+    # ax4 = fig.add_subplot(2, 2, 4)
+    # ax1.plot(TrainAngleErrResult)
+    # ax2.plot(TrainLossResult)
+    # ax3.plot(TestAngleErrResult)
+    # ax4.plot(TestLossResult)
+    # ax1.set_title("train angle error")
+    # ax2.set_title("train loss")
+    # ax3.set_xlabel("test angle error")
+    # ax4.set_xlabel("test loss")
+    # plt.show()
+    print("finished objective")
+    return MAE_tr
 
 
 if __name__ == '__main__':
     if not os.path.isdir(weight_path):
         os.mkdir(weight_path)
-    main()
+    # main()
+    TRIAL_SIZE = 10
+    study = optuna.create_study()
+    study.optimize(objective, n_trials=TRIAL_SIZE)

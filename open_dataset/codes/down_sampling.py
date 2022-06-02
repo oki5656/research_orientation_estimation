@@ -1,7 +1,8 @@
 # このファイルではTUMのデータセットを用い、時系列データ学習用にcsvファイルの整形を行う。
 # 具体的にはIMUのファイルを200Hz→100Hzにダウンサンプリングする部分のみを行う。
-# 'timestamp', 'gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ'へcsvファイルのインデックスを変更しなければならない。このときexcelではなくvscodeで編集することで
-# 数値が意図せず変わるのを防げる
+# 'timestamp', 'gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ'へcsvファイル(data_imu.csv)のインデックスを変更しなければならない。このときexcelではなくvscodeで編集することで
+# 数値が意図せず変わるのを防げる。
+# また次の処理を行うため、同様にdata_mocap.csvもインデックスの編集を行う。
 
 from os import path
 import numpy as np
@@ -9,10 +10,10 @@ import pandas as pd
 from tqdm import tqdm
 
 ####################################### path setting #################################################
-imu_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "imu0", "data_imu.csv")
-mocap_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "mocap0", "data_mocap.csv")
-out_new_imu_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "imu0", "new_data_imu.csv")
-out_new_mocap_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "mocap0", "new_data_mocap.csv")
+imu_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "imu0", "data_imu.csv")
+mocap_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "mocap0", "data_mocap.csv")
+out_new_imu_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "imu0", "new_data_imu.csv")
+out_new_mocap_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "mocap0", "new_data_mocap.csv")
 ######################################################################################################
 
 ## 関数 ##
@@ -41,3 +42,4 @@ print(out_imu_df)
 
 ## 出力 ##
 out_imu_df.to_csv(out_new_imu_path)
+print("Done")

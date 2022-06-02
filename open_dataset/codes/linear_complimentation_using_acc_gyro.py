@@ -7,12 +7,12 @@ import pandas as pd
 from tqdm import tqdm
 
 ####################################### path setting #################################################
-imu_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "imu0", "data_imu.csv")
-new_imu_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "imu0", "new_data_imu.csv")
-mocap_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "mocap0", "data_mocap.csv")
+imu_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "imu0", "data_imu.csv")
+new_imu_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "imu0", "new_data_imu.csv")
+mocap_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "mocap0", "data_mocap.csv")
 # out_new_imu_path = path.join("..", "datasets", "dataset-room1_512_16", "mav0", "imu0", "new_data_imu.csv")
-out_new_mocap_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "mocap0", "new_data_mocap.csv")
-out_all_in_df_path = path.join("..", "datasets", "dataset-room3_512_16", "mav0", "self_made_files", "all_in_imu_mocap.csv")
+out_new_mocap_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "mocap0", "new_data_mocap.csv")
+out_all_in_df_path = path.join("..", "datasets", "dataset-room6_512_16", "mav0", "self_made_files", "all_in_imu_mocap.csv")
 ######################################################################################################
 
 ## 関数 ##
@@ -97,3 +97,4 @@ for i in tqdm(range(5, new_imu_df_row_num -5)):
 # out_imu_df.to_csv(out_new_imu_path)
 # out_mocap_df.to_csv(out_new_mocap_path)
 all_in_df.to_csv(out_all_in_df_path)
+print("Done")

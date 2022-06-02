@@ -12,17 +12,17 @@ import torch.nn as nn
 import pandas as pd
 from torch.optim import SGD, lr_scheduler
 from matplotlib import pyplot as plt
-import os
-import sys
 import math
 import random
 import numpy as np
 from tqdm import tqdm
 import decimal
+import optuna
 
 #############################################  config  ##################################################
 weight_path = os.path.join("..","weights")
-train_data_path = os.path.join("..","datasets", "dataset-room1_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+img_save_path = os.path.join("..", "images")
+train_data_path = os.path.join("..","datasets", "dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 test_data_path = os.path.join("..","datasets", "dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
@@ -57,7 +57,7 @@ def CalcAngleErr(output, label, batch_size):
     return angleErrSum/batch_size
 
 
-def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_random_list):
+def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_random_list, pred_future_time):
     """
     train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)とdir_vec(sequence_length, batch_size, input_size)を返す
     """
@@ -83,14 +83,11 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
         batch_size=len(mini_batch_random_list)
 
     for i in range(batch_size):
-        # idx = np.random.randint(3, len(train_x_df) - batch_size - sequence_length -10 )
         idx = mini_batch_random_list[i]*sequence_length
         out_x.append(np.array(train_x_df[idx : idx + sequence_length]))
-        out_t.append(np.array(train_t_df[idx : idx + sequence_length + 1]))
+        out_t.append(np.array(train_t_df[idx : idx + sequence_length + pred_future_time]))
     out_x = np.array(out_x)
     out_t = np.array(out_t)
-    # print("out_x.shape", out_x.shape)
-    # print("out_t.shape", out_t.shape)
     batch_x_df_np = out_x.transpose(1, 0, 2)
     # print("out_t.shape", out_t.shape)
     batch_t_df_np = out_t.transpose(1, 0, 2)
@@ -135,11 +132,12 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length):
     ####################################################################################################################################################################################
 
 class Predictor(nn.Module):
-    def __init__(self, inputDim, hiddenDim, outputDim):
+    def __init__(self, inputDim, hiddenDim, num_layers, outputDim):
         super(Predictor, self).__init__()
 
         self.rnn = nn.LSTM(input_size = inputDim,
                             hidden_size = hiddenDim,
+                            num_layers = num_layers,
                             batch_first = False)
         self.output_layer = nn.Linear(hiddenDim, outputDim)
     
@@ -151,13 +149,20 @@ class Predictor(nn.Module):
         return output
 
 
-def main():
-    epochs_num = 200
-    hidden_size = 50
-    batch_size = 8
-    sequence_length = 20
+def objective(trial):
+    print("start objective")
+    hidden_size = trial.suggest_int('hidden_size', 5, 100)
+    # hidden_size = 50
+    num_layers = trial.suggest_int('num_layers', 1, 10)
+    batch_size = trial.suggest_int('batch_size', 4, 32)
+    # batch_size = 8
+    epochs_num = 100
+    sequence_length = 10 # x means this model use previous time for 0.01*x seconds 
+    pred_future_time = 50 # x means this model predict 0.01*x seconds later
     output_dim = 3#進行方向ベクトル
-    lr = 0.0005
+    lr = trial.suggest_float('lr', 0.0001, 0.1, log=True)
+    # lr = 0.0005
+    img_save_flag = False
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
@@ -165,11 +170,14 @@ def main():
     test_data_num = len(test_x_df)
 
     # 基本
-    model = Predictor(len(selected_train_columns), hidden_size, output_dim)
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
     model = model.float()
+    model.to(device)
     criterion = nn.L1Loss()#nn.MSELoss()
     optimizer = SGD(model.parameters(), lr=lr)
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=8, eta_min=lr*0.01, last_epoch=- 1, verbose=True)
+    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=8, eta_min=lr*0.01, last_epoch=- 1, verbose=True)
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20, 40], gamma=0.5) # 10 < 20 < 40
     old_test_accurancy=0
     TrainAngleErrResult = []
     TestAngleErrResult = []
@@ -188,65 +196,62 @@ def main():
         angleErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
         test_mini_data_num = int(test_data_num/sequence_length)
-        train_random_num_list = random.sample(range(1, train_mini_data_num), k=train_mini_data_num-1)
-        test_random_num_list = random.sample(range(1, test_mini_data_num), k=test_mini_data_num-1)
+        train_random_num_list = random.sample(range(1, train_mini_data_num-6), k=train_mini_data_num-7)
+        test_random_num_list = random.sample(range(1, test_mini_data_num-6), k=test_mini_data_num-7)
 
         # iteration loop
-        for i in tqdm(range(train_iter_num)):##############################################ここが微妙
+        for i in tqdm(range(train_iter_num-1)):
             optimizer.zero_grad()
             # make mini batch random list
             mini_batch_train_random_list =[]
             for _ in range(batch_size):
                 mini_batch_train_random_list.append(train_random_num_list.pop())
 
-            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_train_random_list)
-            output = model(data.float())
-            if np.isnan(output.detach().numpy()).any():
+            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_train_random_list, pred_future_time)
+            output = model(data.float().to(device))
+            if np.isnan(output.cpu().detach().numpy()).any():
                 print('Nan was found. So system break.')
                 sys.exit()
             # print("############# output.shape = ", output.shape)#torch.Size([1, 8, 7])
             # print("############# label.shape = ", label.shape)#torch.Size([1, 8, 3])
             angleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
             
-            loss = criterion(output.float(), label.float())
-            # tqdm.write(str(label))# + str(loss) + str(label))
+            loss = criterion(output.float().to(device), label.float().to(device))
             loss.backward()
             optimizer.step()
 
             running_loss += loss.data
         scheduler.step()
-        TrainLossResult.append(loss.detach().numpy())
+        TrainLossResult.append(loss.cpu().detach().numpy())
+
         ## 絶対平均誤差を算出 ##
-        # MAE = 0.0
         MAE_tr = angleErrSum/train_iter_num
         TrainAngleErrResult.append(MAE_tr)
         # print(angleErrSum)
         tqdm.write(("train mean angle error = "+ str(MAE_tr)))
-        # tqdm.write('end of epoch !!%d loss: %.3f, training_accuracy: %.5f' % (epoch + 1, running_loss, training_accuracy))
 
-        #test
+        # test
         TestAngleErrSum = 0
-        
         mini_batch_test_random_list =[]
         for _ in range(batch_size):
             mini_batch_test_random_list.append(test_random_num_list.pop())
 
         for i in tqdm(range(test_iter_num)):
-            data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_test_random_list)
-            output = model(data.float(), None)
+            data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_test_random_list, pred_future_time)
+            data.to(device)
+            label.to(device)
+            output = model(data.float().to(device), None)
             TestAngleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
-            loss = criterion(output.float(), label.float())
-        TestLossResult.append(loss.detach().numpy())
+            loss = criterion(output.float().to(device), label.float().to(device))
+        TestLossResult.append(loss.cpu().detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
         TestAngleErrResult.append(MAE_te)
         tqdm.write(("Test mean angle error = "+ str(MAE_te)))
         BestMAE = min(BestMAE, MAE_te)
-        tqdm.write("Best mean absolute error = "+ str(BestMAE))
+        if BestMAE == MAE_te:
+            img_save_flag = True
+        tqdm.write("Best mean absolute test error = "+ str(BestMAE))
 
-        # weight saving
-        # if test_accuracy>old_test_accurancy:
-        #     model_weight_path=os.path.join(weight_path,"best_acc_weight.pt")
-        #     torch.save(model.state_dict(), model_weight_path)
     # graph plotting
     fig = plt.figure(figsize = [5.8, 4])
     ax1 = fig.add_subplot(2, 2, 1)
@@ -261,10 +266,18 @@ def main():
     ax2.set_title("train loss")
     ax3.set_xlabel("test angle error")
     ax4.set_xlabel("test loss")
-    plt.show()
+    # plt.show()
+    # 今までで一番精度がいい時に推論結果を保存
+    if img_save_flag == True:
+        fig.savefig(os.path.join(img_save_path, f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"))
+    print("finished objective")
+    return MAE_te
 
 
 if __name__ == '__main__':
     if not os.path.isdir(weight_path):
         os.mkdir(weight_path)
-    main()
+    # main()
+    TRIAL_SIZE = 50
+    study = optuna.create_study()
+    study.optimize(objective, n_trials=TRIAL_SIZE)

@@ -83,14 +83,11 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
         batch_size=len(mini_batch_random_list)
 
     for i in range(batch_size):
-        # idx = np.random.randint(3, len(train_x_df) - batch_size - sequence_length -10 )
         idx = mini_batch_random_list[i]*sequence_length
         out_x.append(np.array(train_x_df[idx : idx + sequence_length]))
         out_t.append(np.array(train_t_df[idx : idx + sequence_length + pred_future_time]))
     out_x = np.array(out_x)
     out_t = np.array(out_t)
-    # print("out_x.shape", out_x.shape)
-    # print("out_t.shape", out_t.shape)
     batch_x_df_np = out_x.transpose(1, 0, 2)
     # print("out_t.shape", out_t.shape)
     batch_t_df_np = out_t.transpose(1, 0, 2)
@@ -161,7 +158,7 @@ def objective(trial):
     # batch_size = 8
     epochs_num = 100
     sequence_length = 10 # x means this model use previous time for 0.01*x seconds 
-    pred_future_time = 10 # x means this model predict 0.01*x seconds later
+    pred_future_time = 50 # x means this model predict 0.01*x seconds later
     output_dim = 3#進行方向ベクトル
     lr = trial.suggest_float('lr', 0.0001, 0.1, log=True)
     # lr = 0.0005
@@ -199,8 +196,8 @@ def objective(trial):
         angleErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
         test_mini_data_num = int(test_data_num/sequence_length)
-        train_random_num_list = random.sample(range(1, train_mini_data_num), k=train_mini_data_num-1)
-        test_random_num_list = random.sample(range(1, test_mini_data_num), k=test_mini_data_num-1)
+        train_random_num_list = random.sample(range(1, train_mini_data_num-6), k=train_mini_data_num-7)
+        test_random_num_list = random.sample(range(1, test_mini_data_num-6), k=test_mini_data_num-7)
 
         # iteration loop
         for i in tqdm(range(train_iter_num-1)):

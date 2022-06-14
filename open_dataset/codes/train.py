@@ -22,8 +22,10 @@ import optuna
 #############################################  config  ##################################################
 weight_path = os.path.join("..","weights")
 img_save_path = os.path.join("..", "images")
-train_data_path = os.path.join("..","datasets", "dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
-test_data_path = os.path.join("..","datasets", "dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+# train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
+# test_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
+test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 #########################################################################################################
@@ -42,7 +44,7 @@ def CalcAngle(NowPosi, EstDir, CorrDir):
     L1 = math.sqrt((0 - EstDir[0])**2 + (0 - EstDir[1])**2 + (0 - EstDir[2])**2)
     L2 = math.sqrt((0 - CorrDir[0])**2 + (0 - CorrDir[1])**2 + (0 - CorrDir[2])**2)
     D = math.sqrt((EstDir[0] - CorrDir[0])**2 + (EstDir[1] - CorrDir[1])**2 + (EstDir[2] - CorrDir[2])**2)
-    cos_theta = (L1**2 + L2**2 - D**2 + 0.000000000000001-0.000000000000001)/(2*L1*L2 + 0.000000000000001-0.000000000000001)
+    cos_theta = (L1**2 + L2**2 - D**2 + 0.000000000000001-0.000000000000001)/(2*L1*L2 + 0.000000000000001)
     theta_rad = math.acos(np.clip(cos_theta, -1.0, 1.0))# thetaはラジアン
     theta_deg = math.degrees(theta_rad)# ラジアンからdegreeに変換
 
@@ -157,8 +159,8 @@ def objective(trial):
     batch_size = trial.suggest_int('batch_size', 4, 32)
     # batch_size = 8
     epochs_num = 100
-    sequence_length = 10 # x means this model use previous time for 0.01*x seconds 
-    pred_future_time = 50 # x means this model predict 0.01*x seconds later
+    sequence_length = 30 # x means this model use previous time for 0.01*x seconds 
+    pred_future_time = 40 # x means this model predict 0.01*x seconds later
     output_dim = 3#進行方向ベクトル
     lr = trial.suggest_float('lr', 0.0001, 0.1, log=True)
     # lr = 0.0005
@@ -196,8 +198,8 @@ def objective(trial):
         angleErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
         test_mini_data_num = int(test_data_num/sequence_length)
-        train_random_num_list = random.sample(range(1, train_mini_data_num-6), k=train_mini_data_num-7)
-        test_random_num_list = random.sample(range(1, test_mini_data_num-6), k=test_mini_data_num-7)
+        train_random_num_list = random.sample(range(1, train_mini_data_num-2), k=train_mini_data_num-3)
+        test_random_num_list = random.sample(range(1, test_mini_data_num-2), k=test_mini_data_num-3)
 
         # iteration loop
         for i in tqdm(range(train_iter_num-1)):
@@ -278,6 +280,6 @@ if __name__ == '__main__':
     if not os.path.isdir(weight_path):
         os.mkdir(weight_path)
     # main()
-    TRIAL_SIZE = 50
+    TRIAL_SIZE = 20
     study = optuna.create_study()
     study.optimize(objective, n_trials=TRIAL_SIZE)

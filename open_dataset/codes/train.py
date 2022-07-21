@@ -6,26 +6,34 @@ a=os.path.dirname(sys.executable)
 print(os.path.dirname(sys.executable))
 ########################################################################
 
-from cmath import isnan
+# from cmath import isnan
+
+import math
+import random
+import time
 import torch
 import torch.nn as nn
 import pandas as pd
 from torch.optim import SGD, lr_scheduler
 from matplotlib import pyplot as plt
-import math
-import random
 import numpy as np
 from tqdm import tqdm
 import decimal
 import optuna
+import argparse 
+
+from models import choose_model, MODEL_DICT
 
 #############################################  config  ##################################################
 weight_path = os.path.join("..","weights")
 img_save_path = os.path.join("..", "images")
 # train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 # test_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
-train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
-test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
+# train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
+train_data_path = os.path.join("..","datasets", "oxford_IOD", "mix", "data1", "syn", "mix_slow_imu3_vi3_handheld_imu235_vi235.csv")
+# train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
+# test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")
+test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 #########################################################################################################
@@ -53,18 +61,46 @@ def CalcAngle(NowPosi, EstDir, CorrDir):
 
 def CalcAngleErr(output, label, batch_size):
     angleErrSum = 0.0
+    distanceErrSum = 0.0
+    # print("label.shape", label.shape) # torch.Size([32, 3]) = (batch size, outout feature num)
+    # print("output.shape", output.shape) # (sequence, batch size, outout feature num)
     for i in range(batch_size):
-        angleErrSum += CalcAngle(label[0, i, :], output[0, i, :], label[0, i, :])
+        angleErr = CalcAngle(label[i, :], output[i, :], label[i, :])# とりあえずsequenceのidxは1。後でmodelの出力経形式を要検討。# for transformer2 
+        angleErrSum += angleErr
+        # angleErrSum += CalcAngle(label[i, :], output[0, i, :], label[i, :])# とりあえずsequenceのidxは1。後でmodelの出力経形式を要検討。# for lstm
+        # distanceErrSum += math.sqrt((label[i, 0] - output[0, i, 0])**2 + (label[i, 1] -  output[0, i, 1])**2 + (label[i, 2] -  output[0, i, 2])**2) # for lstm
+        distanceErr = math.sqrt((label[i, 0] - output[i, 0])**2 + (label[i, 1] -  output[i, 1])**2 + (label[i, 2] -  output[i, 2])**2) # for transformer2
+        distanceErrSum += distanceErr
 
-    return angleErrSum/batch_size
+    # if np.isnan(angleErr) or np.isnan(distanceErr):
+    #     print('Nan was found. So system break.')
+    #     time.sleep(5)
+    #     a=1
+    #     time.sleep(2)
+    #     b=1
+
+    return angleErrSum/batch_size, distanceErrSum/batch_size
+
+def ConvertUnitVec(dir_vec):
+    batch_size, _ = dir_vec.shape
+    unit_dir_vec = np.empty((batch_size, 3))
+    # unit_dir_vec = [[0]*3 for j in range(batch_size)]
+    for i in range(batch_size):
+        bunbo = math.sqrt(dir_vec[i][0]**2 + dir_vec[i][1]**2 + dir_vec[i][2]**2) + 0.0000000000000000001
+        unit_dir_vec[i][0] = dir_vec[i][0]/bunbo
+        unit_dir_vec[i][1] = dir_vec[i][1]/bunbo
+        unit_dir_vec[i][2] = dir_vec[i][2]/bunbo
+
+    return unit_dir_vec
 
 
-def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_random_list, pred_future_time):
+def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns,
+              selected_correct_columns, mini_batch_random_list, pred_future_time):
     """
     train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)とdir_vec(sequence_length, batch_size, input_size)を返す
     """
-    batch_x_df = pd.DataFrame(columns=selected_train_columns)
-    batch_t_df = pd.DataFrame(columns=selected_correct_columns)
+    # batch_x_df = pd.DataFrame(columns=selected_train_columns)
+    # batch_t_df = pd.DataFrame(columns=selected_correct_columns)
     #####################################################################################################################
     # idx = np.random.randint(3, len(train_x_df) - batch_size - 10)
     # for j in range(batch_size):
@@ -87,84 +123,70 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
     for i in range(batch_size):
         idx = mini_batch_random_list[i]*sequence_length
         out_x.append(np.array(train_x_df[idx : idx + sequence_length]))
-        out_t.append(np.array(train_t_df[idx : idx + sequence_length + pred_future_time]))
+        out_t.append(np.array(train_t_df[idx + sequence_length - 1: idx + sequence_length + pred_future_time]))
+        # out_t.append(np.array(train_t_df.loc[idx + sequence_length + pred_future_time]))
     out_x = np.array(out_x)
     out_t = np.array(out_t)
     batch_x_df_np = out_x.transpose(1, 0, 2)
-    # print("out_t.shape", out_t.shape)
     batch_t_df_np = out_t.transpose(1, 0, 2)
-
-    #####################################################################################################################
-
-    # numpy形式に変換
-    # batch_x_df_np = batch_x_df.to_numpy()[np.newaxis, :, :].astype(np.float32)#'gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ'
-    # batch_t_df_np = batch_t_df.to_numpy()[np.newaxis, :, :].astype(np.float32)#'pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ'
+    # print("out_x.shape", out_x.shape)# out_x.shape (19, 30, 6)=(batch size, sequence length, x-feature num)
+    # print("out_t.shape", out_t.shape)# out_t.shape (19, 41, 7)=(batch size, now to future length, t-feature num)
 
     # スマホ座標系に変換
-    dir_vec = TransWithQuat(batch_t_df_np, batch_size, sequence_length)
-    # print("batch_x_df_np.shape", batch_x_df_np.shape)(5, 8, 6)
-    # print("dir_vec.shape", dir_vec.shape)(5, 8, 3)
-    return torch.tensor(batch_x_df_np), torch.tensor(dir_vec)
+    dir_vec = TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time)# dir_vec.shape : (batch size, 3)
+    unit_dir_vec = ConvertUnitVec(dir_vec) # dir_vecのある行が0だとnanを生成してしまう。
+
+    return torch.tensor(batch_x_df_np), torch.tensor(unit_dir_vec)
 
 
-def TransWithQuat(batch_t_df_np, batch_size, sequence_length):
-    dir_vec = np.ones((sequence_length, batch_size, 3))
-    ####################################################################################################################################################################################
-    # for i in range(batch_size):
-    #     qW, qX, qY, qZ = batch_t_df_np[0][i][3], batch_t_df_np[0][i][4], batch_t_df_np[0][i][5], batch_t_df_np[0][i][6]
-    #     E = np.array([[qX**2 - qY**2 - qZ**2 + qW**2, 2*(qX*qY - qZ*qW), 2*(qX*qZ + qY*qW)],
-    #             [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
-    #             [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])#クォータニオン表現による回転行列
-    #     old_dir = np.array([batch_t_df_np[0][i+1][0] - batch_t_df_np[0][i][0], batch_t_df_np[0][i+1][1] - batch_t_df_np[0][i][1], batch_t_df_np[0][i+1][2] - batch_t_df_np[0][i][2]])#２点の位置から進行方向ベクトルを求めた
-    #     new_dir = np.matmul(E, old_dir.T)
-    #     dir_vec[0][i][0], dir_vec[0][i][1], dir_vec[0][i][2] = new_dir[0], new_dir[1], new_dir[2]
-    # return dir_vec
-    ####################################################################################################################################################################################
-    for i in range(sequence_length):
-        for j in range(batch_size):
-            qW, qX, qY, qZ = batch_t_df_np[i][j][3], batch_t_df_np[i][j][4], batch_t_df_np[i][j][5], batch_t_df_np[i][j][6]
-            E = np.array([[qX**2 - qY**2 - qZ**2 + qW**2, 2*(qX*qY - qZ*qW), 2*(qX*qZ + qY*qW)],
-                    [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
-                    [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])#クォータニオン表現による回転行列
-            old_dir = np.array([batch_t_df_np[i+1][j][0] - batch_t_df_np[i][j][0], batch_t_df_np[i+1][j][1] - batch_t_df_np[i][j][1], batch_t_df_np[i+1][j][2] - batch_t_df_np[i][j][2]])#２点の位置から進行方向ベクトルを求めた
-            new_dir = np.matmul(E.T, old_dir.T)##############################################################  転地するかも
-            dir_vec[i][j][0], dir_vec[i][j][1], dir_vec[i][j][2] = new_dir[0], new_dir[1], new_dir[2]
-    # print("dir_vec.shape", dir_vec.shape)
-    return dir_vec
-    ####################################################################################################################################################################################
+def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
+    dir_vec = np.ones((batch_size, 3))
+    # print("batch_t_df_np.shape", batch_t_df_np.shape) # (now to future length, batch size, t-feature num)
+    # dir_vec = np.ones((sequence_length, batch_size, 3))
 
-class Predictor(nn.Module):
-    def __init__(self, inputDim, hiddenDim, num_layers, outputDim):
-        super(Predictor, self).__init__()
-
-        self.rnn = nn.LSTM(input_size = inputDim,
-                            hidden_size = hiddenDim,
-                            num_layers = num_layers,
-                            batch_first = False)
-        self.output_layer = nn.Linear(hiddenDim, outputDim)
+    for j in range(batch_size):
+        qW, qX, qY, qZ = batch_t_df_np[0][j][3], batch_t_df_np[0][j][4], batch_t_df_np[0][j][5], batch_t_df_np[0][j][6]
+        E = np.array([[qX**2 - qY**2 - qZ**2 + qW**2, 2*(qX*qY - qZ*qW), 2*(qX*qZ + qY*qW)],
+                [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
+                [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])#クォータニオン表現による回転行列
+        corr_dir_vec = np.array([batch_t_df_np[pred_future_time][j][0] - batch_t_df_np[0][j][0],
+                                 batch_t_df_np[pred_future_time][j][1] - batch_t_df_np[0][j][1],
+                                 batch_t_df_np[pred_future_time][j][2] - batch_t_df_np[0][j][2]])#２点(現在とpred_future_time)の位置から進行方向ベクトルを求めた
+        smh_dir_vec = np.matmul(E.T, corr_dir_vec.T)##############################  転地するかも。スマートフォン座標系進行方向ベクトル生成。
+        dir_vec[j][0], dir_vec[j][1], dir_vec[j][2] = smh_dir_vec[0], smh_dir_vec[1], smh_dir_vec[2]
     
-    def forward(self, inputs, hidden0=None):
-        output, (hidden, cell) = self.rnn(inputs, hidden0) #LSTM層
-        # output = self.output_layer(output[:, -1, :]) #全結合層
-        output = self.output_layer(output)
+        # if smh_dir_vec[0]==0 or smh_dir_vec[1]==0 or smh_dir_vec[2]==0:
+        #     print("0 was found")
+        #     time.sleep(5)
+        #     a=1
+        #     time.sleep(2)
+        #     b=1
 
-        return output
+    return dir_vec
 
 
-def objective(trial):
-    print("start objective")
+
+def main(trial):
+    parser = argparse.ArgumentParser(description='training argument')
+    parser.add_argument('--model', type=str, default="transformer_enc", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
+    parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
+    parser.add_argument('-p', '--pred_future_time', type=int, default=30, help='How many seconds later would you like to predict?')
+    # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
+    args = parser.parse_args()
+
+    # print("start objective")
     hidden_size = trial.suggest_int('hidden_size', 5, 100)
     # hidden_size = 50
     num_layers = trial.suggest_int('num_layers', 1, 10)
-    batch_size = trial.suggest_int('batch_size', 4, 32)
-    # batch_size = 8
-    epochs_num = 100
-    sequence_length = 30 # x means this model use previous time for 0.01*x seconds 
-    pred_future_time = 40 # x means this model predict 0.01*x seconds later
-    output_dim = 3#進行方向ベクトル
+    # batch_size = trial.suggest_int('batch_size', 4, 32)
+    batch_size = 8
+    sequence_length = args.sequence_length # 30 # x means this model use previous time for 0.01*x seconds 
+    pred_future_time = args.pred_future_time # 40 # x means this model predict 0.01*x seconds later
+    output_dim = 3 # 進行方向ベクトルの要素数
     lr = trial.suggest_float('lr', 0.0001, 0.1, log=True)
     # lr = 0.0005
-    img_save_flag = False
+    img_save_flag = False#fixed
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
@@ -173,7 +195,8 @@ def objective(trial):
 
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
+    # model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
+    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim)
     model = model.float()
     model.to(device)
     criterion = nn.L1Loss()#nn.MSELoss()
@@ -183,25 +206,30 @@ def objective(trial):
     old_test_accurancy=0
     TrainAngleErrResult = []
     TestAngleErrResult = []
+    TrainDistanceErrResult = []
+    TestDistanceErrResult = []
     TrainLossResult = []
     TestLossResult = []
     BestMAE = 360
+    BestMDE = 100000
 
     # イテレーション数計算
     train_iter_num = int(train_data_num/(sequence_length*batch_size))
     test_iter_num = int(test_data_num/(sequence_length*batch_size))
-
-    for epoch in range(epochs_num):
+    print(f"batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
+    for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
         running_loss = 0.0
         # training_accuracy = 0.0
         angleErrSum = 0
+        distanceErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
         test_mini_data_num = int(test_data_num/sequence_length)
         train_random_num_list = random.sample(range(1, train_mini_data_num-2), k=train_mini_data_num-3)
         test_random_num_list = random.sample(range(1, test_mini_data_num-2), k=test_mini_data_num-3)
 
         # iteration loop
+        model.train()
         for i in tqdm(range(train_iter_num-1)):
             optimizer.zero_grad()
             # make mini batch random list
@@ -210,13 +238,32 @@ def objective(trial):
                 mini_batch_train_random_list.append(train_random_num_list.pop())
 
             data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_train_random_list, pred_future_time)
-            output = model(data.float().to(device))
-            if np.isnan(output.cpu().detach().numpy()).any():
-                print('Nan was found. So system break.')
-                sys.exit()
-            # print("############# output.shape = ", output.shape)#torch.Size([1, 8, 7])
-            # print("############# label.shape = ", label.shape)#torch.Size([1, 8, 3])
-            angleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            # print("label.shape", label.shape)
+
+            data = data.squeeze()  
+            # print("data.shape", data.shape)#torch.Size([30, 32, 6])sequence, batch size, feature num # (T, N, E)
+            # print(label.shape)#torch.Size([30, 32, 3])sequence, batch size, feature num # (T, N, E)
+            if args.model == "transformer_encdec":
+                a=1
+                src = data[:sequence_length-1, :, :]
+                tgt = data[1:, :, :]
+                output = model(src=src.float().to(device), tgt=tgt.float().to(device))
+                # output = output.contiguous().view(-1, output.size(-1))
+                # print("output.shape", output.shape)
+                # output = output.contiguous().view(-1, output.size(-1))
+            elif args.model == "lstm" or args.model == "transformer_enc":
+                output = model(data.float().to(device))
+                # print("output.shape", output.shape)
+            else:
+                a=1
+                print("specify light model name")
+
+            is_unit_vector = True
+
+
+            angleErr, distanceErr = CalcAngleErr(output, label, batch_size) # decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            angleErrSum += angleErr
+            distanceErrSum += distanceErr
             
             loss = criterion(output.float().to(device), label.float().to(device))
             loss.backward()
@@ -226,14 +273,18 @@ def objective(trial):
         scheduler.step()
         TrainLossResult.append(loss.cpu().detach().numpy())
 
-        ## 絶対平均誤差を算出 ##
-        MAE_tr = angleErrSum/train_iter_num
+        ## 絶対平均誤差と平均距離誤差を算出 ##
+        MAE_tr = angleErrSum/(train_iter_num-1)
+        MDE_tr = distanceErrSum/(train_iter_num-1)
         TrainAngleErrResult.append(MAE_tr)
+        TrainDistanceErrResult.append(MDE_tr)
         # print(angleErrSum)
-        tqdm.write(("train mean angle error = "+ str(MAE_tr)))
+        tqdm.write(f"train mean angle and distance error = {MAE_tr}[度], {MDE_tr}[m]")
 
         # test
+        model.eval()
         TestAngleErrSum = 0
+        TestDistanceErrSum = 0
         mini_batch_test_random_list =[]
         for _ in range(batch_size):
             mini_batch_test_random_list.append(test_random_num_list.pop())
@@ -242,32 +293,59 @@ def objective(trial):
             data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_test_random_list, pred_future_time)
             data.to(device)
             label.to(device)
-            output = model(data.float().to(device), None)
-            TestAngleErrSum += decimal.Decimal(CalcAngleErr(output, label, batch_size))
+
+            if args.model == "transformer_encdec":
+                src = data[:30, :, :]
+                tgt = data[1:, :, :]
+                output = model(src=src.float().to(device), tgt=tgt.float().to(device))
+                # output = output.contiguous().view(-1, output.size(-1))
+                # print("output.shape", output.shape)
+                # output = output.contiguous().view(-1, output.size(-1))
+            elif args.model == "lstm" or args.model == "transformer_enc":
+                output = model(data.float().to(device))
+                # print("output.shape", output.shape)
+            else:
+                print("specify light model name")
+
+            angleErr, distanceErr = CalcAngleErr(output, label, batch_size)# decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            TestAngleErrSum += angleErr
+            TestDistanceErrSum += distanceErr
             loss = criterion(output.float().to(device), label.float().to(device))
         TestLossResult.append(loss.cpu().detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
+        MDE_te =TestDistanceErrSum/test_iter_num
         TestAngleErrResult.append(MAE_te)
-        tqdm.write(("Test mean angle error = "+ str(MAE_te)))
+        TestDistanceErrResult.append(MDE_te)
+        tqdm.write(f"Test mean angle and distance error = {MAE_te}, {MDE_te}")
         BestMAE = min(BestMAE, MAE_te)
+        BestMDE = min(BestMDE, MDE_te)
         if BestMAE == MAE_te:
             img_save_flag = True
-        tqdm.write("Best mean absolute test error = "+ str(BestMAE))
+        tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}")
 
     # graph plotting
-    fig = plt.figure(figsize = [5.8, 4])
-    ax1 = fig.add_subplot(2, 2, 1)
-    ax2 = fig.add_subplot(2, 2, 2)
-    ax3 = fig.add_subplot(2, 2, 3)
-    ax4 = fig.add_subplot(2, 2, 4)
+    fig = plt.figure(figsize = [9.0, 6.0])# 横幅, 高さ
+    ax1 = fig.add_subplot(2, 3, 1)
+    ax2 = fig.add_subplot(2, 3, 2)
+    ax3 = fig.add_subplot(2, 3, 3)
+    ax4 = fig.add_subplot(2, 3, 4)
+    ax5 = fig.add_subplot(2, 3, 5)
+    ax6 = fig.add_subplot(2, 3, 6)
     ax1.plot(TrainAngleErrResult)
-    ax2.plot(TrainLossResult)
-    ax3.plot(TestAngleErrResult)
-    ax4.plot(TestLossResult)
+    ax2.plot(TrainDistanceErrResult)
+    ax3.plot(TrainLossResult)
+    ax4.plot(TestAngleErrResult)
+    ax5.plot(TestDistanceErrResult)
+    ax6.plot(TestLossResult)
     ax1.set_title("train angle error")
-    ax2.set_title("train loss")
-    ax3.set_xlabel("test angle error")
-    ax4.set_xlabel("test loss")
+    ax2.set_title("train distance error")
+    ax3.set_title("train loss")
+    ax4.set_xlabel("test angle error")
+    ax5.set_xlabel("test distance error")
+    ax6.set_xlabel("test loss")
+    ax1.set_ylim(0, 50)
+    ax4.set_ylim(0, 50)
+
     # plt.show()
     # 今までで一番精度がいい時に推論結果を保存
     if img_save_flag == True:
@@ -279,7 +357,8 @@ def objective(trial):
 if __name__ == '__main__':
     if not os.path.isdir(weight_path):
         os.mkdir(weight_path)
+
     # main()
-    TRIAL_SIZE = 20
+    TRIAL_NUM = 25
     study = optuna.create_study()
-    study.optimize(objective, n_trials=TRIAL_SIZE)
+    study.optimize(main, n_trials=TRIAL_NUM)

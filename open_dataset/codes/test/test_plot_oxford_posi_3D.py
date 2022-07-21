@@ -13,7 +13,7 @@ import pandas as pd
 
 # position csvファイルパス
 # input_text_file_path=os.path.join(".." ,".." ,"datasets","running-hard-vi_gt_data","mocap_data.txt")
-input_text_file_path=os.path.join(".." ,".." ,"datasets" ,"oxford_IOD" ,"handheld", "data1", "syn", "vi2.csv")
+input_text_file_path=os.path.join(".." ,".." ,"datasets" ,"oxford_IOD" ,"handheld", "data1", "syn", "concate_imu2_vi2.csv")
 
 # plotを高速化
 mplstyle.use('fast')
@@ -40,8 +40,8 @@ ax.set_zlabel("z", size = 14, color = "r")
 # x, y, z = np.arange(1), np.arange(1), np.arange(1)
 count=1
 csv_df = pd.read_csv(input_text_file_path)
-start=1
-goal=37600
+start=3000
+goal=4000
 csv_df_row_num = int(csv_df.shape[0])
 print("csv_df_row_num=", csv_df_row_num)
 print(f"plotting from row {start} to {goal}.")

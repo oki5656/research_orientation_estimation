@@ -168,7 +168,7 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="transformer_enc", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=30, help='How many seconds later would you like to predict?')
@@ -196,7 +196,7 @@ def main(trial):
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     # model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
-    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim)
+    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length)
     model = model.float()
     model.to(device)
     criterion = nn.L1Loss()#nn.MSELoss()

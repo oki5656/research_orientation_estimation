@@ -6,8 +6,6 @@ a=os.path.dirname(sys.executable)
 print(os.path.dirname(sys.executable))
 ########################################################################
 
-# from cmath import isnan
-
 import math
 import random
 import time
@@ -18,6 +16,7 @@ from torch.optim import SGD, lr_scheduler
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
+from os.path import join
 import decimal
 import optuna
 import argparse 
@@ -25,7 +24,6 @@ import argparse
 from models import choose_model, MODEL_DICT
 
 #############################################  config  ##################################################
-weight_path = os.path.join("..","weights")
 img_save_path = os.path.join("..", "images")
 # train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 # test_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
@@ -72,13 +70,6 @@ def CalcAngleErr(output, label, batch_size):
         distanceErr = math.sqrt((label[i, 0] - output[i, 0])**2 + (label[i, 1] -  output[i, 1])**2 + (label[i, 2] -  output[i, 2])**2) # for transformer2
         distanceErrSum += distanceErr
 
-    # if np.isnan(angleErr) or np.isnan(distanceErr):
-    #     print('Nan was found. So system break.')
-    #     time.sleep(5)
-    #     a=1
-    #     time.sleep(2)
-    #     b=1
-
     return angleErrSum/batch_size, distanceErrSum/batch_size
 
 def ConvertUnitVec(dir_vec):
@@ -94,24 +85,11 @@ def ConvertUnitVec(dir_vec):
     return unit_dir_vec
 
 
-def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns,
-              selected_correct_columns, mini_batch_random_list, pred_future_time):
+def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
+              mini_batch_random_list, pred_future_time, is_output_unit):
     """
     train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)とdir_vec(sequence_length, batch_size, input_size)を返す
     """
-    # batch_x_df = pd.DataFrame(columns=selected_train_columns)
-    # batch_t_df = pd.DataFrame(columns=selected_correct_columns)
-    #####################################################################################################################
-    # idx = np.random.randint(3, len(train_x_df) - batch_size - 10)
-    # for j in range(batch_size):
-    #     # batch_x_df = batch_x_df.append(train_x_df[idx + j: idx + j + 1], ignore_index=True)
-    #     # batch_t_df = batch_t_df.append(train_t_df[idx + j: idx + j + 1], ignore_index=True)
-    #     batch_x_df = pd.concat([batch_x_df, train_x_df[idx + j: idx + j + 1]])
-    #     batch_t_df = pd.concat([batch_t_df, train_t_df[idx + j: idx + j + 1]])
-    # # lossを求める際に未来の情報が必要なので１個プラスでappend
-    # # batch_t_df = batch_t_df.append(train_t_df[idx + j + 1: idx + j + 2], ignore_index=True)
-    # batch_t_df= pd.concat([batch_t_df, train_t_df[idx + j + 1: idx + j + 2]])
-    #####################################################################################################################
     out_x = list()
     out_t = list()
     batch_length = len(mini_batch_random_list)
@@ -134,9 +112,12 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
 
     # スマホ座標系に変換
     dir_vec = TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time)# dir_vec.shape : (batch size, 3)
-    unit_dir_vec = ConvertUnitVec(dir_vec) # dir_vecのある行が0だとnanを生成してしまう。
 
-    return torch.tensor(batch_x_df_np), torch.tensor(unit_dir_vec)
+    if is_output_unit == "true":
+        unit_dir_vec = ConvertUnitVec(dir_vec) # dir_vecのある行が0だとnanを生成してしまう。
+        return torch.tensor(batch_x_df_np), torch.tensor(unit_dir_vec)
+    else:
+        return torch.tensor(batch_x_df_np), torch.tensor(dir_vec)
 
 
 def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
@@ -154,24 +135,17 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
                                  batch_t_df_np[pred_future_time][j][2] - batch_t_df_np[0][j][2]])#２点(現在とpred_future_time)の位置から進行方向ベクトルを求めた
         smh_dir_vec = np.matmul(E.T, corr_dir_vec.T)##############################  転地するかも。スマートフォン座標系進行方向ベクトル生成。
         dir_vec[j][0], dir_vec[j][1], dir_vec[j][2] = smh_dir_vec[0], smh_dir_vec[1], smh_dir_vec[2]
-    
-        # if smh_dir_vec[0]==0 or smh_dir_vec[1]==0 or smh_dir_vec[2]==0:
-        #     print("0 was found")
-        #     time.sleep(5)
-        #     a=1
-        #     time.sleep(2)
-        #     b=1
 
     return dir_vec
 
 
-
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=30, help='How many seconds later would you like to predict?')
+    parser.add_argument("--is_output_unit", type=str, default="true", help='select output format from unit vector or normal vector(including distance)')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
     args = parser.parse_args()
 
@@ -237,7 +211,8 @@ def main(trial):
             for _ in range(batch_size):
                 mini_batch_train_random_list.append(train_random_num_list.pop())
 
-            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_train_random_list, pred_future_time)
+            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
+                                    mini_batch_train_random_list, pred_future_time, args.is_output_unit)
             # print("label.shape", label.shape)
 
             data = data.squeeze()  
@@ -251,12 +226,12 @@ def main(trial):
                 # output = output.contiguous().view(-1, output.size(-1))
                 # print("output.shape", output.shape)
                 # output = output.contiguous().view(-1, output.size(-1))
-            elif args.model == "lstm" or args.model == "transformer_enc":
+            elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
                 output = model(data.float().to(device))
                 # print("output.shape", output.shape)
             else:
                 a=1
-                print("specify light model name")
+                print(" specify light model name")
 
             is_unit_vector = True
 
@@ -290,7 +265,8 @@ def main(trial):
             mini_batch_test_random_list.append(test_random_num_list.pop())
 
         for i in tqdm(range(test_iter_num)):
-            data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns, mini_batch_test_random_list, pred_future_time)
+            data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
+                                    mini_batch_test_random_list, pred_future_time, args.is_output_unit)
             data.to(device)
             label.to(device)
 
@@ -301,7 +277,7 @@ def main(trial):
                 # output = output.contiguous().view(-1, output.size(-1))
                 # print("output.shape", output.shape)
                 # output = output.contiguous().view(-1, output.size(-1))
-            elif args.model == "lstm" or args.model == "transformer_enc":
+            elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
                 output = model(data.float().to(device))
                 # print("output.shape", output.shape)
             else:
@@ -324,7 +300,7 @@ def main(trial):
         tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}")
 
     # graph plotting
-    fig = plt.figure(figsize = [9.0, 6.0])# 横幅, 高さ
+    fig = plt.figure(figsize = [9.0, 6.0])# [横幅, 高さ]
     ax1 = fig.add_subplot(2, 3, 1)
     ax2 = fig.add_subplot(2, 3, 2)
     ax3 = fig.add_subplot(2, 3, 3)
@@ -344,20 +320,30 @@ def main(trial):
     ax5.set_xlabel("test distance error")
     ax6.set_xlabel("test loss")
     ax1.set_ylim(0, 50)
+    ax2.set_ylim(0, 0.6)
+    ax2.set_ylim(0, 0.5)
     ax4.set_ylim(0, 50)
+    ax5.set_ylim(0, 0.6)
+    ax2.set_ylim(0, 0.5)
 
     # plt.show()
+    train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
+    test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
+    dir_name = f"{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
+    dir_path = join(img_save_path, dir_name)
+    os.makedirs(dir_path, exist_ok=True)
+
     # 今までで一番精度がいい時に推論結果を保存
     if img_save_flag == True:
-        fig.savefig(os.path.join(img_save_path, f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"))
+        file_name = f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
+        assert os.path.isdir(dir_path), "aaaaaaaaaaa"
+        print(join(dir_path, file_name))
+        fig.savefig(join(img_save_path, file_name))
     print("finished objective")
     return MAE_te
 
 
 if __name__ == '__main__':
-    if not os.path.isdir(weight_path):
-        os.mkdir(weight_path)
-
     # main()
     TRIAL_NUM = 25
     study = optuna.create_study()

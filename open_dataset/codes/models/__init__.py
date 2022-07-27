@@ -1,11 +1,13 @@
 from models.lstm import get_lstm
 from models.transformer_enc import TransAm
 from models.transformer_encdec import Transformer
+from models.IMUTransformerEncoder import IMUTransformerEncoder
 
 MODEL_DICT = {
     "lstm": get_lstm,
     "transformer_enc": TransAm,
     "transformer_encdec": Transformer,
+    "imu_transformer" : IMUTransformerEncoder,
 }
 
 def choose_model(model_name: str, train_columns_num: int, hidden_size: int, num_layers: int , output_dim: int, sequence_length: int):
@@ -17,4 +19,6 @@ def choose_model(model_name: str, train_columns_num: int, hidden_size: int, num_
     elif model_name == "transformer_enc":
         return MODEL_DICT[model_name](feature_size=6)
     elif model_name == "transformer_encdec":
-        return MODEL_DICT[model_name](d_model = 6, nhead=3)
+        return MODEL_DICT[model_name](d_model=6, nhead=3)
+    elif model_name == "imu_transformer":
+        return MODEL_DICT[model_name](seq_length=sequence_length)

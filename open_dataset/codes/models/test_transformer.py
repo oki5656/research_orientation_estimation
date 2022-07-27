@@ -4,7 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import pandas as pd
-from transformer_enc_dec import Transformer
+from transformer_encdec import Transformer
 from transformer_enc import TransAm
 from matplotlib import pyplot as plt
 import numpy as np

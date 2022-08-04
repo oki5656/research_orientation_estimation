@@ -138,7 +138,16 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
 
     return dir_vec
 
+def LastEpochResultLog(log, now_epoch, max_epoch):
+    """Record last epochs result every optuna trial.
 
+    Args:
+        log(dict) : 
+        now_epoch(int) : 
+        max_epoch(int?) : 
+    Returns:
+        dict : log of test angle error, test distance error, test loss until now
+    """
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
     parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
@@ -184,6 +193,7 @@ def main(trial):
     TestDistanceErrResult = []
     TrainLossResult = []
     TestLossResult = []
+    LastEpochResults = {"LastEpochTestAngleErr" : [], "LastEpochTestDistanceErr" : [], "LastEpochTestLoss" : []}
     BestMAE = 360
     BestMDE = 100000
 

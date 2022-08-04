@@ -321,10 +321,10 @@ def main(trial):
     ax6.set_xlabel("test loss")
     ax1.set_ylim(0, 50)
     ax2.set_ylim(0, 0.6)
-    ax2.set_ylim(0, 0.5)
+    ax3.set_ylim(0, 0.5)
     ax4.set_ylim(0, 50)
     ax5.set_ylim(0, 0.6)
-    ax2.set_ylim(0, 0.5)
+    ax6.set_ylim(0, 0.5)
 
     # plt.show()
     train_filename = os.path.splitext(os.path.basename(train_data_path))[0]

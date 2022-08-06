@@ -19,6 +19,7 @@ from tqdm import tqdm
 from os.path import join
 import decimal
 import optuna
+import datetime
 import argparse 
 
 from models import choose_model, MODEL_DICT
@@ -30,8 +31,8 @@ img_save_path = os.path.join("..", "images")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
 train_data_path = os.path.join("..","datasets", "oxford_IOD", "mix", "data1", "syn", "mix_slow_imu3_vi3_handheld_imu235_vi235.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
-# test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")
-test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
+test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")
+# test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 #########################################################################################################
@@ -141,6 +142,8 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
 class Log():
     def __init__(self):
         self.LastEpochResults = {"LastEpochTestAngleErr" : [], "LastEpochTestDistanceErr" : [], "LastEpochTestLoss" : []}
+        dt_now = datetime.datetime.now()
+        self.TrainStartTime = "22" + str(dt_now.month).zfill(2) + str(dt_now.day).zfill(2) + str(dt_now.hour).zfill(2) + str(dt_now.minute).zfill(2)
 
     def LastEpochResultLog(self, now_epoch, max_epoch, LastEpochTestAngleErr, LastEpochTestDistanceErr, LastEpochTestLoss):
         """Record last epochs result every optuna trial.
@@ -155,18 +158,26 @@ class Log():
             none
         """
         if now_epoch == max_epoch-1:
-            self.LastEpochResults["LastEpochTestAngleErr"].append()
-            self.LastEpochResults["LastEpochTestDistanceErr"].append()
-            self.LastEpochResults["LastEpochTestLoss"].append()
+            self.LastEpochResults["LastEpochTestAngleErr"].append(round(LastEpochTestAngleErr, 5))
+            self.LastEpochResults["LastEpochTestDistanceErr"].append(round(LastEpochTestDistanceErr, 5))
+            self.LastEpochResults["LastEpochTestLoss"].append(round(LastEpochTestLoss, 5))
+
+    def LastEpochResultsShow(self):
+        """ Show all last epoch result to console.
+
+        """
+        print("LastEpochTestAngleErr : ", self.LastEpochResults["LastEpochTestAngleErr"])
+        print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
+        print("LastEpochTestLoss", self.LastEpochResults["LastEpochTestLoss"])
 
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=30, help='How many seconds later would you like to predict?')
-    parser.add_argument("--is_output_unit", type=str, default="true", help='select output format from unit vector or normal vector(including distance)')
+    parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
     args = parser.parse_args()
 
@@ -205,7 +216,7 @@ def main(trial):
     TestDistanceErrResult = []
     TrainLossResult = []
     TestLossResult = []
-    log = Log()
+    # log = Log()
     BestMAE = 360
     BestMDE = 100000
 
@@ -310,7 +321,7 @@ def main(trial):
             loss = criterion(output.float().to(device), label.float().to(device))
             TestAngleErrSum += angleErr
             TestDistanceErrSum += distanceErr
-            TestLossSum += loss
+            TestLossSum += float(loss)
             
         TestLossResult.append(loss.cpu().detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
@@ -325,6 +336,9 @@ def main(trial):
         if BestMAE == MAE_te:
             img_save_flag = True
         tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}")
+
+    # print last epoch result to console
+    log.LastEpochResultsShow()
 
     # graph plotting
     fig = plt.figure(figsize = [9.0, 6.0])# [横幅, 高さ]
@@ -356,15 +370,14 @@ def main(trial):
     # plt.show()
     train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
     test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
-    dir_name = f"{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
+    StartTime = log.TrainStartTime
+    dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
     dir_path = join(img_save_path, dir_name)
     os.makedirs(dir_path, exist_ok=True)
 
     # 今までで一番精度がいい時に推論結果を保存
     if img_save_flag == True:
         file_name = f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
-        assert os.path.isdir(dir_path), "aaaaaaaaaaa"
-        print(join(dir_path, file_name))
         fig.savefig(join(img_save_path, file_name))
     print("finished objective")
     return MAE_te
@@ -372,6 +385,7 @@ def main(trial):
 
 if __name__ == '__main__':
     # main()
+    log = Log()
     TRIAL_NUM = 25
     study = optuna.create_study()
     study.optimize(main, n_trials=TRIAL_NUM)

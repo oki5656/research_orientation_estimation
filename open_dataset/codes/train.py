@@ -138,16 +138,28 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
 
     return dir_vec
 
-def LastEpochResultLog(log, now_epoch, max_epoch):
-    """Record last epochs result every optuna trial.
+class Log():
+    def __init__(self):
+        self.LastEpochResults = {"LastEpochTestAngleErr" : [], "LastEpochTestDistanceErr" : [], "LastEpochTestLoss" : []}
 
-    Args:
-        log(dict) : 
-        now_epoch(int) : 
-        max_epoch(int?) : 
-    Returns:
-        dict : log of test angle error, test distance error, test loss until now
-    """
+    def LastEpochResultLog(self, now_epoch, max_epoch, LastEpochTestAngleErr, LastEpochTestDistanceErr, LastEpochTestLoss):
+        """Record last epochs result every optuna trial.
+
+        Args:
+            now_epoch(int) : 
+            max_epoch(int?) : 
+            LastEpochTestAngleErr : 
+            LastEpochTestDistanceErr : 
+            LastEpochTestLoss : 
+        Returns:
+            none
+        """
+        if now_epoch == max_epoch-1:
+            self.LastEpochResults["LastEpochTestAngleErr"].append()
+            self.LastEpochResults["LastEpochTestDistanceErr"].append()
+            self.LastEpochResults["LastEpochTestLoss"].append()
+
+
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
     parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
@@ -193,7 +205,7 @@ def main(trial):
     TestDistanceErrResult = []
     TrainLossResult = []
     TestLossResult = []
-    LastEpochResults = {"LastEpochTestAngleErr" : [], "LastEpochTestDistanceErr" : [], "LastEpochTestLoss" : []}
+    log = Log()
     BestMAE = 360
     BestMDE = 100000
 
@@ -254,7 +266,7 @@ def main(trial):
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.data
+            running_loss += loss.data # ??????????????? todo : loss.dataとlossの違いは？
         scheduler.step()
         TrainLossResult.append(loss.cpu().detach().numpy())
 
@@ -270,6 +282,7 @@ def main(trial):
         model.eval()
         TestAngleErrSum = 0
         TestDistanceErrSum = 0
+        TestLossSum = 0
         mini_batch_test_random_list =[]
         for _ in range(batch_size):
             mini_batch_test_random_list.append(test_random_num_list.pop())
@@ -294,14 +307,18 @@ def main(trial):
                 print("specify light model name")
 
             angleErr, distanceErr = CalcAngleErr(output, label, batch_size)# decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            loss = criterion(output.float().to(device), label.float().to(device))
             TestAngleErrSum += angleErr
             TestDistanceErrSum += distanceErr
-            loss = criterion(output.float().to(device), label.float().to(device))
+            TestLossSum += loss
+            
         TestLossResult.append(loss.cpu().detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
-        MDE_te =TestDistanceErrSum/test_iter_num
+        MDE_te = TestDistanceErrSum/test_iter_num
+        MTL_te = TestLossSum/test_iter_num
         TestAngleErrResult.append(MAE_te)
         TestDistanceErrResult.append(MDE_te)
+        log.LastEpochResultLog(epoch, args.epoch, MAE_te, MDE_te, MTL_te) 
         tqdm.write(f"Test mean angle and distance error = {MAE_te}, {MDE_te}")
         BestMAE = min(BestMAE, MAE_te)
         BestMDE = min(BestMDE, MDE_te)

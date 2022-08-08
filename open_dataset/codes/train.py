@@ -173,11 +173,12 @@ class Log():
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
-    parser.add_argument('-p', '--pred_future_time', type=int, default=30, help='How many seconds later would you like to predict?')
+    parser.add_argument('-p', '--pred_future_time', type=int, default=40, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
+    parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
     args = parser.parse_args()
 
@@ -202,7 +203,7 @@ def main(trial):
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     # model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
-    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length)
+    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length, args.input_shift)
     model = model.float()
     model.to(device)
     criterion = nn.L1Loss()#nn.MSELoss()
@@ -232,8 +233,8 @@ def main(trial):
         distanceErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
         test_mini_data_num = int(test_data_num/sequence_length)
-        train_random_num_list = random.sample(range(1, train_mini_data_num-2), k=train_mini_data_num-3)
-        test_random_num_list = random.sample(range(1, test_mini_data_num-2), k=test_mini_data_num-3)
+        train_random_num_list = random.sample(range(1, train_mini_data_num-4), k=train_mini_data_num-5)
+        test_random_num_list = random.sample(range(1, test_mini_data_num-4), k=test_mini_data_num-5)
 
         # iteration loop
         model.train()
@@ -252,9 +253,9 @@ def main(trial):
             # print("data.shape", data.shape)#torch.Size([30, 32, 6])sequence, batch size, feature num # (T, N, E)
             # print(label.shape)#torch.Size([30, 32, 3])sequence, batch size, feature num # (T, N, E)
             if args.model == "transformer_encdec":
-                a=1
-                src = data[:sequence_length-1, :, :]
-                tgt = data[1:, :, :]
+                shift = args.input_shift
+                src = data[:sequence_length-shift, :, :]
+                tgt = data[shift:, :, :]
                 output = model(src=src.float().to(device), tgt=tgt.float().to(device))
                 # output = output.contiguous().view(-1, output.size(-1))
                 # print("output.shape", output.shape)

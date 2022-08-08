@@ -8,7 +8,7 @@ print(os.path.dirname(sys.executable))
 
 import math
 import random
-import time
+import json
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -170,6 +170,14 @@ class Log():
         print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
         print("LastEpochTestLoss", self.LastEpochResults["LastEpochTestLoss"])
 
+    def LastEpochResultSave(self, save_path):
+        """ Save all last epoch result to specified derectory.
+
+        """
+        save_file_name = join(save_path, "last_epoch_results.json")
+        with open(save_file_name, 'w') as f:
+            json.dump(self.LastEpochResults, f, indent=4)
+
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
@@ -217,7 +225,6 @@ def main(trial):
     TestDistanceErrResult = []
     TrainLossResult = []
     TestLossResult = []
-    # log = Log()
     BestMAE = 360
     BestMDE = 100000
 
@@ -228,7 +235,6 @@ def main(trial):
     for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
         running_loss = 0.0
-        # training_accuracy = 0.0
         angleErrSum = 0
         distanceErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
@@ -264,11 +270,7 @@ def main(trial):
                 output = model(data.float().to(device))
                 # print("output.shape", output.shape)
             else:
-                a=1
                 print(" specify light model name")
-
-            is_unit_vector = True
-
 
             angleErr, distanceErr = CalcAngleErr(output, label, batch_size) # decimal.Decimal(CalcAngleErr(output, label, batch_size))
             angleErrSum += angleErr

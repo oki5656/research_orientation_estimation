@@ -182,7 +182,7 @@ class Log():
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
     parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
-    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
+    parser.add_argument('--epoch', type=int, default=3, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=70, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=40, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
@@ -231,7 +231,7 @@ def main(trial):
     # イテレーション数計算
     train_iter_num = int(train_data_num/(sequence_length*batch_size))
     test_iter_num = int(test_data_num/(sequence_length*batch_size))
-    print(f"batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
+    print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
         running_loss = 0.0
@@ -383,6 +383,7 @@ def main(trial):
     if img_save_flag == True:
         file_name = f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
         fig.savefig(join(img_save_path, file_name))
+    print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     print("finished objective")
     return MAE_te
 
@@ -390,6 +391,6 @@ def main(trial):
 if __name__ == '__main__':
     # main()
     log = Log()
-    TRIAL_NUM = 25
+    TRIAL_NUM = 2
     study = optuna.create_study()
     study.optimize(main, n_trials=TRIAL_NUM)

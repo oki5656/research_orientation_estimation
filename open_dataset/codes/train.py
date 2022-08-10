@@ -168,7 +168,7 @@ class Log():
         """
         print("LastEpochTestAngleErr : ", self.LastEpochResults["LastEpochTestAngleErr"])
         print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
-        print("LastEpochTestLoss", self.LastEpochResults["LastEpochTestLoss"])
+        print("LastEpochTestLoss : ", self.LastEpochResults["LastEpochTestLoss"])
 
     def LastEpochResultSave(self, save_path):
         """ Save all last epoch result to specified derectory.
@@ -181,9 +181,9 @@ class Log():
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
+    parser.add_argument('-s', '--sequence_length', type=int, default=70, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=40, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
     parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
@@ -340,9 +340,6 @@ def main(trial):
             img_save_flag = True
         tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}")
 
-    # print last epoch result to console
-    log.LastEpochResultsShow()
-
     # graph plotting
     fig = plt.figure(figsize = [9.0, 6.0])# [横幅, 高さ]
     ax1 = fig.add_subplot(2, 3, 1)
@@ -377,6 +374,10 @@ def main(trial):
     dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
     dir_path = join(img_save_path, dir_name)
     os.makedirs(dir_path, exist_ok=True)
+
+    # print last epoch result to console
+    log.LastEpochResultsShow()
+    log.LastEpochResultSave(img_save_path)
 
     # 今までで一番精度がいい時に推論結果を保存
     if img_save_flag == True:

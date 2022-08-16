@@ -66,7 +66,7 @@ class Transformer(Module):
                  activation: Union[str, Callable[[Tensor], Tensor]] = F.relu, seq_len: int = 30,
                  custom_encoder: Optional[Any] = None, custom_decoder: Optional[Any] = None,
                  layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
-                 device=None, dtype=None) -> None:
+                 device=None, dtype=None, input_shift: int = 1) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(Transformer, self).__init__()
 
@@ -96,7 +96,7 @@ class Transformer(Module):
         self.batch_first = batch_first
 
         self.linear1 = Linear(6, 3)
-        self.linear2 = Linear(seq_len, 1)
+        self.linear2 = Linear(seq_len-input_shift, 1)
 
     def forward(self, src: Tensor, tgt: Tensor, src_mask: Optional[Tensor] = None, tgt_mask: Optional[Tensor] = None,
                 memory_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None,

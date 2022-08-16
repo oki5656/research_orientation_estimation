@@ -8,7 +8,7 @@ print(os.path.dirname(sys.executable))
 
 import math
 import random
-import time
+import json
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -19,6 +19,7 @@ from tqdm import tqdm
 from os.path import join
 import decimal
 import optuna
+import datetime
 import argparse 
 
 from models import choose_model, MODEL_DICT
@@ -30,8 +31,8 @@ img_save_path = os.path.join("..", "images")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
 train_data_path = os.path.join("..","datasets", "oxford_IOD", "mix", "data1", "syn", "mix_slow_imu3_vi3_handheld_imu235_vi235.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
-# test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")
-test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
+test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")
+# test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 #########################################################################################################
@@ -138,14 +139,54 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
 
     return dir_vec
 
+class Log():
+    def __init__(self):
+        self.LastEpochResults = {"LastEpochTestAngleErr" : [], "LastEpochTestDistanceErr" : [], "LastEpochTestLoss" : []}
+        dt_now = datetime.datetime.now()
+        self.TrainStartTime = "22" + str(dt_now.month).zfill(2) + str(dt_now.day).zfill(2) + str(dt_now.hour).zfill(2) + str(dt_now.minute).zfill(2)
+
+    def LastEpochResultLog(self, now_epoch, max_epoch, LastEpochTestAngleErr, LastEpochTestDistanceErr, LastEpochTestLoss):
+        """Record last epochs result every optuna trial.
+
+        Args:
+            now_epoch(int) : 
+            max_epoch(int?) : 
+            LastEpochTestAngleErr : 
+            LastEpochTestDistanceErr : 
+            LastEpochTestLoss : 
+        Returns:
+            none
+        """
+        if now_epoch == max_epoch-1:
+            self.LastEpochResults["LastEpochTestAngleErr"].append(round(LastEpochTestAngleErr, 5))
+            self.LastEpochResults["LastEpochTestDistanceErr"].append(round(LastEpochTestDistanceErr, 5))
+            self.LastEpochResults["LastEpochTestLoss"].append(round(LastEpochTestLoss, 5))
+
+    def LastEpochResultsShow(self):
+        """ Show all last epoch result to console.
+
+        """
+        print("LastEpochTestAngleErr : ", self.LastEpochResults["LastEpochTestAngleErr"])
+        print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
+        print("LastEpochTestLoss : ", self.LastEpochResults["LastEpochTestLoss"])
+
+    def LastEpochResultSave(self, save_path):
+        """ Save all last epoch result to specified derectory.
+
+        """
+        save_file_name = join(save_path, "last_epoch_results.json")
+        with open(save_file_name, 'w') as f:
+            json.dump(self.LastEpochResults, f, indent=4)
+
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
-    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=30, help='select train data sequence length')
-    parser.add_argument('-p', '--pred_future_time', type=int, default=30, help='How many seconds later would you like to predict?')
-    parser.add_argument("--is_output_unit", type=str, default="true", help='select output format from unit vector or normal vector(including distance)')
+    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--epoch', type=int, default=3, help='specify epochs number')
+    parser.add_argument('-s', '--sequence_length', type=int, default=70, help='select train data sequence length')
+    parser.add_argument('-p', '--pred_future_time', type=int, default=40, help='How many seconds later would you like to predict?')
+    parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
+    parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
     args = parser.parse_args()
 
@@ -170,7 +211,7 @@ def main(trial):
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     # model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
-    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length)
+    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length, args.input_shift)
     model = model.float()
     model.to(device)
     criterion = nn.L1Loss()#nn.MSELoss()
@@ -190,17 +231,16 @@ def main(trial):
     # イテレーション数計算
     train_iter_num = int(train_data_num/(sequence_length*batch_size))
     test_iter_num = int(test_data_num/(sequence_length*batch_size))
-    print(f"batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
+    print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
         running_loss = 0.0
-        # training_accuracy = 0.0
         angleErrSum = 0
         distanceErrSum = 0
         train_mini_data_num = int(train_data_num/sequence_length)
         test_mini_data_num = int(test_data_num/sequence_length)
-        train_random_num_list = random.sample(range(1, train_mini_data_num-2), k=train_mini_data_num-3)
-        test_random_num_list = random.sample(range(1, test_mini_data_num-2), k=test_mini_data_num-3)
+        train_random_num_list = random.sample(range(1, train_mini_data_num-4), k=train_mini_data_num-5)
+        test_random_num_list = random.sample(range(1, test_mini_data_num-4), k=test_mini_data_num-5)
 
         # iteration loop
         model.train()
@@ -219,9 +259,9 @@ def main(trial):
             # print("data.shape", data.shape)#torch.Size([30, 32, 6])sequence, batch size, feature num # (T, N, E)
             # print(label.shape)#torch.Size([30, 32, 3])sequence, batch size, feature num # (T, N, E)
             if args.model == "transformer_encdec":
-                a=1
-                src = data[:sequence_length-1, :, :]
-                tgt = data[1:, :, :]
+                shift = args.input_shift
+                src = data[:sequence_length-shift, :, :]
+                tgt = data[shift:, :, :]
                 output = model(src=src.float().to(device), tgt=tgt.float().to(device))
                 # output = output.contiguous().view(-1, output.size(-1))
                 # print("output.shape", output.shape)
@@ -230,11 +270,7 @@ def main(trial):
                 output = model(data.float().to(device))
                 # print("output.shape", output.shape)
             else:
-                a=1
                 print(" specify light model name")
-
-            is_unit_vector = True
-
 
             angleErr, distanceErr = CalcAngleErr(output, label, batch_size) # decimal.Decimal(CalcAngleErr(output, label, batch_size))
             angleErrSum += angleErr
@@ -244,7 +280,7 @@ def main(trial):
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.data
+            running_loss += loss.data # ??????????????? todo : loss.dataとlossの違いは？
         scheduler.step()
         TrainLossResult.append(loss.cpu().detach().numpy())
 
@@ -260,6 +296,7 @@ def main(trial):
         model.eval()
         TestAngleErrSum = 0
         TestDistanceErrSum = 0
+        TestLossSum = 0
         mini_batch_test_random_list =[]
         for _ in range(batch_size):
             mini_batch_test_random_list.append(test_random_num_list.pop())
@@ -284,14 +321,18 @@ def main(trial):
                 print("specify light model name")
 
             angleErr, distanceErr = CalcAngleErr(output, label, batch_size)# decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            loss = criterion(output.float().to(device), label.float().to(device))
             TestAngleErrSum += angleErr
             TestDistanceErrSum += distanceErr
-            loss = criterion(output.float().to(device), label.float().to(device))
+            TestLossSum += float(loss)
+            
         TestLossResult.append(loss.cpu().detach().numpy())
         MAE_te = TestAngleErrSum/test_iter_num
-        MDE_te =TestDistanceErrSum/test_iter_num
+        MDE_te = TestDistanceErrSum/test_iter_num
+        MTL_te = TestLossSum/test_iter_num
         TestAngleErrResult.append(MAE_te)
         TestDistanceErrResult.append(MDE_te)
+        log.LastEpochResultLog(epoch, args.epoch, MAE_te, MDE_te, MTL_te) 
         tqdm.write(f"Test mean angle and distance error = {MAE_te}, {MDE_te}")
         BestMAE = min(BestMAE, MAE_te)
         BestMDE = min(BestMDE, MDE_te)
@@ -329,22 +370,27 @@ def main(trial):
     # plt.show()
     train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
     test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
-    dir_name = f"{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
+    StartTime = log.TrainStartTime
+    dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
     dir_path = join(img_save_path, dir_name)
     os.makedirs(dir_path, exist_ok=True)
+
+    # print last epoch result to console
+    log.LastEpochResultsShow()
+    log.LastEpochResultSave(img_save_path)
 
     # 今までで一番精度がいい時に推論結果を保存
     if img_save_flag == True:
         file_name = f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
-        assert os.path.isdir(dir_path), "aaaaaaaaaaa"
-        print(join(dir_path, file_name))
         fig.savefig(join(img_save_path, file_name))
+    print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     print("finished objective")
     return MAE_te
 
 
 if __name__ == '__main__':
     # main()
-    TRIAL_NUM = 25
+    log = Log()
+    TRIAL_NUM = 2
     study = optuna.create_study()
     study.optimize(main, n_trials=TRIAL_NUM)

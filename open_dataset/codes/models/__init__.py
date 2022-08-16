@@ -10,7 +10,7 @@ MODEL_DICT = {
     "imu_transformer" : IMUTransformerEncoder,
 }
 
-def choose_model(model_name: str, train_columns_num: int, hidden_size: int, num_layers: int , output_dim: int, sequence_length: int):
+def choose_model(model_name: str, train_columns_num: int, hidden_size: int, num_layers: int , output_dim: int, sequence_length: int, input_shift: int):
     if model_name not in MODEL_DICT:
         raise KeyError(f'Choose model_name from {MODEL_DICT.keys()}')
 
@@ -19,6 +19,6 @@ def choose_model(model_name: str, train_columns_num: int, hidden_size: int, num_
     elif model_name == "transformer_enc":
         return MODEL_DICT[model_name](feature_size=6)
     elif model_name == "transformer_encdec":
-        return MODEL_DICT[model_name](d_model=6, nhead=3)
+        return MODEL_DICT[model_name](d_model=6, nhead=3, seq_len=sequence_length, input_shift=input_shift)
     elif model_name == "imu_transformer":
         return MODEL_DICT[model_name](seq_length=sequence_length)

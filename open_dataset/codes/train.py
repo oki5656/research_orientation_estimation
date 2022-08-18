@@ -6,6 +6,7 @@ a=os.path.dirname(sys.executable)
 print(os.path.dirname(sys.executable))
 ########################################################################
 
+import re
 import math
 import random
 import json
@@ -25,13 +26,15 @@ import argparse
 from models import choose_model, MODEL_DICT
 
 #############################################  config  ##################################################
-img_save_path = os.path.join("..", "images")
+img_save_path = os.path.join("..", "images2")
 # train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 # test_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
-train_data_path = os.path.join("..","datasets", "oxford_IOD", "mix", "data1", "syn", "mix_slow_imu3_vi3_handheld_imu235_vi235.csv")
+# train_data_path = os.path.join("..","datasets", "oxford_IOD", "mix", "data1", "syn", "mix_slow_imu3_vi3_handheld_imu235_vi235.csv")#最近まで使ってた8/17
+train_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "sum_Take20220809_083159001and003nan_removed.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
-test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")
+# test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")#最近まで使ってた8/17
+test_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 # test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
@@ -181,10 +184,10 @@ class Log():
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
-    parser.add_argument('--epoch', type=int, default=3, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=70, help='select train data sequence length')
-    parser.add_argument('-p', '--pred_future_time', type=int, default=40, help='How many seconds later would you like to predict?')
+    parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
+    parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
+    parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
     parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
@@ -372,6 +375,7 @@ def main(trial):
     test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
     StartTime = log.TrainStartTime
     dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
+    dir_name = dir_name.replace(".", "").replace(" ", "").replace("-", "")
     dir_path = join(img_save_path, dir_name)
     os.makedirs(dir_path, exist_ok=True)
 
@@ -389,8 +393,10 @@ def main(trial):
 
 
 if __name__ == '__main__':
-    # main()
+    # カレントディレクトリ
+    cwd = os.getcwd()
+    print("now directory is", cwd)
     log = Log()
-    TRIAL_NUM = 2
+    TRIAL_NUM = 25
     study = optuna.create_study()
     study.optimize(main, n_trials=TRIAL_NUM)

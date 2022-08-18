@@ -1,17 +1,20 @@
+# データの上下カットがなされたものを使用して、足のマーカー座標を整形する。
+
 from cmath import isnan, nan
 import os
 import math
 from turtle import distance
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 from os.path import join
 from argparse import ArgumentParser, Namespace
 
 
 #######################################################################################################
-csv_file_path = join("csvdata", "preprocessed", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut.csv")
-new_csv_file_folder_path = join("csvdata", "all_complete_001_v3")
-new_csv_file_name = os.path.splitext(os.path.basename(csv_file_path))[0] + "_all_complete.csv"
+csv_file_path = join("..", "datasets", "large_space", "mocap", "top_buttom_cut", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut.csv")
+new_csv_file_folder_path = join("..", "datasets", "large_space", "mocap", "foot_maker_processed")
+new_csv_file_name = os.path.splitext(os.path.basename(csv_file_path))[0] + "_foot_maker_processed.csv"
 XYZorQuaternion = "Quaternion"
 NotRowsNumber = 3 # not value exept for columns name. For example, imu 6F512D5A17D511EDA5E3221A4204BB97, Rotation.
 Smp_maker_number = 3
@@ -176,8 +179,10 @@ class PreprocessMocapFile(object):
         foot_maker_position_X = []
         foot_maker_position_Y = []
         foot_maker_position_Z = []
+
+        print("calcurating foot maker position")
         # Rows loop
-        for i in range(NotRowsNumber, self.all_rows_number):
+        for i in tqdm(range(NotRowsNumber, self.all_rows_number)):
             featureCol= self.df.iloc[i, self.imu_col_number + Smp_maker_number*3 + 2: ]
             imu_position = self.df.iloc[i, 2 + self.rotation_columns_number: 5 + self.rotation_columns_number]
 
@@ -199,11 +204,27 @@ class PreprocessMocapFile(object):
         Returns :
             new_df(pandas.dataframe) : added interpolation to rack of only one row 
         """
-        for i in range(1, new_df_rows_number - 1):
+        print("interpolating for removing nan")
+        # 1行欠損しているとき補間
+        for i in tqdm(range(1, new_df_rows_number - 1)):
+            # 着目している1行に1つ以上nanが含まれるか判定
             if (1 <= new_df.iloc[i, :].isna().sum()) and (0 == new_df.iloc[i-1, :].isna().sum()) and (0 == new_df.iloc[i+1, :].isna().sum()):
                 for j in range(new_df_cols_number):
                     if math.isnan(float(new_df.iloc[i, j])):
                         new_df.iloc[i, j] = (float(new_df.iloc[i-1, j]) + float(new_df.iloc[i+1, j]))/2
+        
+        # 2行欠損しているとき補間
+        for i in tqdm(range(new_df_rows_number-3)):
+            if (0 == new_df.iloc[i, :].isna().sum()) and (1 <= new_df.iloc[i+1, :].isna().sum()) and (1 <= new_df.iloc[i+2, :].isna().sum()) and (0 == new_df.iloc[i+3, :].isna().sum()):
+                # 1行目の処理
+                for j in range(new_df_cols_number):
+                    if math.isnan(float(new_df.iloc[i+1, j])):
+                        new_df.iloc[i+1, j] = 2*float(new_df.iloc[i, j])/3 + float(new_df.iloc[i+3, j])/3
+
+                # 2行目の処理
+                for j in range(new_df_cols_number):
+                    if math.isnan(float(new_df.iloc[i+2, j])):
+                        new_df.iloc[i+2, j] = float(new_df.iloc[i, j])/3 + 2*float(new_df.iloc[i+3, j])/3
 
         return new_df
 

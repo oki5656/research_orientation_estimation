@@ -21,12 +21,13 @@ from os.path import join
 import decimal
 import optuna
 import datetime
-import argparse 
+import argparse
+from distutils.util import strtobool
 
 from models import choose_model, MODEL_DICT
 
 #############################################  config  ##################################################
-img_save_path = os.path.join("..", "images2")
+img_save_path = os.path.join("..", "images")
 # train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 # test_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
@@ -184,10 +185,11 @@ class Log():
 
 def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--model', type=str, default="imu_transformer", help=f'choose model from {MODEL_DICT.keys()}')
+    parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
+    parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
-    parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
+    parser.add_argument('-s', '--sequence_length', type=int, default=70, help='select train data sequence length')
+    parser.add_argument('-p', '--pred_future_time', type=int, default=90, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
     parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
@@ -363,12 +365,12 @@ def main(trial):
     ax4.set_xlabel("test angle error")
     ax5.set_xlabel("test distance error")
     ax6.set_xlabel("test loss")
-    ax1.set_ylim(0, 50)
-    ax2.set_ylim(0, 0.6)
-    ax3.set_ylim(0, 0.5)
-    ax4.set_ylim(0, 50)
-    ax5.set_ylim(0, 0.6)
-    ax6.set_ylim(0, 0.5)
+    # ax1.set_ylim(0, 50)
+    # ax2.set_ylim(0, 0.6)
+    # ax3.set_ylim(0, 0.5)
+    # ax4.set_ylim(0, 50)
+    # ax5.set_ylim(0, 0.6)
+    # ax6.set_ylim(0, 0.5)
 
     # plt.show()
     train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
@@ -383,9 +385,16 @@ def main(trial):
     log.LastEpochResultsShow()
     log.LastEpochResultSave(img_save_path)
 
-    # 今までで一番精度がいい時に推論結果を保存
+    # trialごとにweight fileをsaveする
+    rounded_mae = round(MAE_te, 5)
+    rouded_mde = round(MDE_te, 5)
+    weight_fiel_name = f"trial{trial.number}_MAE{rounded_mae}_MDE{rouded_mde}_lr{lr:.06f}_batch_size_{batch_size}_num_layers{num_layers}_hiddensize{hidden_size}_seq{sequence_length}_pred{pred_future_time}.pth"
+    weight_save_path = join(img_save_path, weight_fiel_name)
+    torch.save(model.state_dict(), weight_save_path)
+
+    # trialごとに推論結果のグラフを保存
     if img_save_flag == True:
-        file_name = f"err_{BestMAE:.02f}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
+        file_name = f"err_{BestMAE:.02f}_trial{trial.number}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
         fig.savefig(join(img_save_path, file_name))
     print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     print("finished objective")

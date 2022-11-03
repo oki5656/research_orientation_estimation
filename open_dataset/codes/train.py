@@ -39,6 +39,7 @@ test_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "Ta
 # test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
+Non_duplicate_length = 10
 #########################################################################################################
 
 
@@ -91,7 +92,7 @@ def ConvertUnitVec(dir_vec):
 
 
 def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
-              mini_batch_random_list, pred_future_time, is_output_unit):
+              mini_batch_random_list, pred_future_time, is_output_unit, Non_duplicate_length, Non_duplicate_length_offset):
     """
     train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)とdir_vec(sequence_length, batch_size, input_size)を返す
     """
@@ -104,7 +105,7 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
         batch_size=len(mini_batch_random_list)
 
     for i in range(batch_size):
-        idx = mini_batch_random_list[i]*sequence_length
+        idx = mini_batch_random_list[i]*Non_duplicate_length + Non_duplicate_length_offset
         out_x.append(np.array(train_x_df[idx : idx + sequence_length]))
         out_t.append(np.array(train_t_df[idx + sequence_length - 1: idx + sequence_length + pred_future_time]))
         # out_t.append(np.array(train_t_df.loc[idx + sequence_length + pred_future_time]))
@@ -188,8 +189,8 @@ def main(trial):
     parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
     parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=70, help='select train data sequence length')
-    parser.add_argument('-p', '--pred_future_time', type=int, default=90, help='How many seconds later would you like to predict?')
+    parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
+    parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
     parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
@@ -210,8 +211,8 @@ def main(trial):
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
     test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
-    train_data_num = len(train_x_df)
-    test_data_num = len(test_x_df)
+    train_frame_num = len(train_x_df)
+    test_frame_num = len(test_x_df)
 
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -230,26 +231,36 @@ def main(trial):
     TestDistanceErrResult = []
     TrainLossResult = []
     TestLossResult = []
+    train_mini_data_num = int(train_frame_num/Non_duplicate_length)
+    test_mini_data_num = int(test_frame_num/Non_duplicate_length)
     BestMAE = 360
     BestMDE = 100000
 
     # イテレーション数計算
-    train_iter_num = int(train_data_num/(sequence_length*batch_size))
-    test_iter_num = int(test_data_num/(sequence_length*batch_size))
+    # train_iter_num = int(train_data_num/(sequence_length*batch_size))
+    # test_iter_num = int(test_data_num/(sequence_length*batch_size))
+    train_use_data_num = train_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
+    test_use_data_num = test_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
+    train_iter_num = train_use_data_num//batch_size
+    test_iter_num = test_use_data_num//batch_size
     print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
         running_loss = 0.0
         angleErrSum = 0
         distanceErrSum = 0
-        train_mini_data_num = int(train_data_num/sequence_length)
-        test_mini_data_num = int(test_data_num/sequence_length)
-        train_random_num_list = random.sample(range(1, train_mini_data_num-4), k=train_mini_data_num-5)
-        test_random_num_list = random.sample(range(1, test_mini_data_num-4), k=test_mini_data_num-5)
+        # train_mini_data_num = int(train_data_num/sequence_length)
+        # test_mini_data_num = int(test_data_num/sequence_length)
+
+        Non_duplicate_length_offset = np.random.randint(0, Non_duplicate_length)
+        train_random_num_list = random.sample(range(1, train_use_data_num + 1),
+                                              k=train_use_data_num)
+        test_random_num_list = random.sample(range(1, test_use_data_num + 1),
+                                             k=test_use_data_num)
 
         # iteration loop
         model.train()
-        for i in tqdm(range(train_iter_num-1)):
+        for i in tqdm(range(train_iter_num)):
             optimizer.zero_grad()
             # make mini batch random list
             mini_batch_train_random_list =[]
@@ -257,7 +268,8 @@ def main(trial):
                 mini_batch_train_random_list.append(train_random_num_list.pop())
 
             data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
-                                    mini_batch_train_random_list, pred_future_time, args.is_output_unit)
+                                    mini_batch_train_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
+                                    Non_duplicate_length_offset)
             # print("label.shape", label.shape)
 
             data = data.squeeze()  
@@ -308,7 +320,8 @@ def main(trial):
 
         for i in tqdm(range(test_iter_num)):
             data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
-                                    mini_batch_test_random_list, pred_future_time, args.is_output_unit)
+                                    mini_batch_test_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
+                                    Non_duplicate_length_offset)
             data.to(device)
             label.to(device)
 

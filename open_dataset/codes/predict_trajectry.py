@@ -24,11 +24,11 @@ from models import choose_model, MODEL_DICT
 
 parser = argparse.ArgumentParser(description='training argument')
 ##########################################################################################################################
-parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
+parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
 parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
 parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
-weight_path = os.path.join("..", "images2", "trial4_MAE29.88455_MDE789.85298_lr0.000267_batch_size_8_num_layers8_hiddensize13_seq21_pred12.pth")
+weight_path = os.path.join("..", "images", "trial23_MAE6.44142_MDE202.69628_lr0.000553_batch_size_8_num_layers8_hiddensize60_seq21_pred33.pth")
 sequence_length = 21
 hidden_size = 13
 num_layers = 8
@@ -48,6 +48,7 @@ model.load_state_dict(torch.load(weight_path))
 
 # predict
 data = torch.rand((sequence_length, batch_size, 6)).to(device)
+print("input data", data)
 if args.model == "transformer_encdec":
     shift = args.input_shift
     src = data[:sequence_length-shift, :, :]
@@ -61,4 +62,4 @@ elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "i
     # print("output.shape", output.shape)
 else:
     print(" specify light model name")
-print(output)
+print("output", output)

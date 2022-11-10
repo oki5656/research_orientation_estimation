@@ -93,8 +93,13 @@ def ConvertUnitVec(dir_vec):
 
 def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
               mini_batch_random_list, pred_future_time, is_output_unit, Non_duplicate_length, Non_duplicate_length_offset):
-    """
-    train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)とdir_vec(sequence_length, batch_size, input_size)を返す
+    """train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)と
+    dir_vec(sequence_length, batch_size, input_size)を返す
+    Args : 
+
+    Returns : 
+        torch.tensor(batch_x_df_np) : batch size分の入力データ。shapeは(sequence_length, batch_size, input_size)
+        torch.tensor(dir_vec) : スマホ座標系の正解進行方向ベクトルshapeは(sequence_length, batch_size, input_size)
     """
     out_x = list()
     out_t = list()
@@ -127,6 +132,8 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
 
 
 def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
+    """
+    """
     dir_vec = np.ones((batch_size, 3))
     # print("batch_t_df_np.shape", batch_t_df_np.shape) # (now to future length, batch size, t-feature num)
     # dir_vec = np.ones((sequence_length, batch_size, 3))
@@ -169,7 +176,6 @@ class Log():
 
     def LastEpochResultsShow(self):
         """ Show all last epoch result to console.
-
         """
         print("LastEpochTestAngleErr : ", self.LastEpochResults["LastEpochTestAngleErr"])
         print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
@@ -177,7 +183,6 @@ class Log():
 
     def LastEpochResultSave(self, save_path):
         """ Save all last epoch result to specified derectory.
-
         """
         save_file_name = join(save_path, "last_epoch_results.json")
         with open(save_file_name, 'w') as f:
@@ -189,7 +194,7 @@ def main(trial):
     parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
     parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
+    parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
     parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
@@ -216,7 +221,6 @@ def main(trial):
 
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    # model = Predictor(len(selected_train_columns), hidden_size, num_layers, output_dim)
     model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length, args.input_shift)
     model = model.float()
     model.to(device)
@@ -267,9 +271,9 @@ def main(trial):
             for _ in range(batch_size):
                 mini_batch_train_random_list.append(train_random_num_list.pop())
 
-            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
-                                    mini_batch_train_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
-                                    Non_duplicate_length_offset)
+            data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns,
+                                    selected_correct_columns, mini_batch_train_random_list, pred_future_time,
+                                    args.is_output_unit, Non_duplicate_length, Non_duplicate_length_offset)
             # print("label.shape", label.shape)
 
             data = data.squeeze()  
@@ -326,12 +330,13 @@ def main(trial):
             label.to(device)
 
             if args.model == "transformer_encdec":
-                src = data[:30, :, :]
-                tgt = data[1:, :, :]
+                # src = data[:30, :, :]
+                # tgt = data[1:, :, :]
+                src = data[:sequence_length-shift, :, :]
+                tgt = data[shift:, :, :]
                 output = model(src=src.float().to(device), tgt=tgt.float().to(device))
                 # output = output.contiguous().view(-1, output.size(-1))
                 # print("output.shape", output.shape)
-                # output = output.contiguous().view(-1, output.size(-1))
             elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
                 output = model(data.float().to(device))
                 # print("output.shape", output.shape)
@@ -415,7 +420,6 @@ def main(trial):
 
 
 if __name__ == '__main__':
-    # カレントディレクトリ
     cwd = os.getcwd()
     print("now directory is", cwd)
     log = Log()

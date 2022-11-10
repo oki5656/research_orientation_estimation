@@ -1,5 +1,6 @@
 # このファイルではデータセットを用いLSTMで学習を行う
 ########################################################################
+from genericpath import isfile
 import os
 import sys
 # a=os.path.dirname(sys.executable)
@@ -186,6 +187,22 @@ class Log():
         dt_now = datetime.datetime.now()
         self.TrainStartTime = "22" + str(dt_now.month).zfill(2) + str(dt_now.day).zfill(2) + str(dt_now.hour).zfill(2) + str(dt_now.minute).zfill(2)
 
+
+    def train_info_log(self, train_info_log_path):
+        if os.path.isfile(train_info_log_path):
+            
+            with open(train_info_log_path, mode='a') as f:
+                s = f"\ntrial:{self.trial_num} BestMAE:{self.BestMAE} lr:{self.lr} "\
+                    f"batch_size:{self.batch_size} num_layers:{self.num_layers} hidden_size:{self.hidden_size} "
+                f.write(s)
+        else:
+            with open(train_info_log_path, 'w') as f:
+                s = f"startTime:{self.TrainStartTime} model:{self.model} seq:{self.sequence_length} "\
+                    f"pred:{self.pred_future_time} maxEpoch:{self.max_epoch} \ntrain_filename:{self.train_filename} "\
+                    f"\ntest_filename:{self.test_filename} is_output_unit:{self.is_output_unit}\n"
+                f.write(s)
+
+
     def LastEpochResultLog(self, now_epoch, max_epoch, LastEpochTestAngleErr, LastEpochTestDistanceErr, LastEpochTestLoss):
         """Record last epochs result every optuna trial.
 
@@ -211,7 +228,7 @@ class Log():
         print("LastEpochTestLoss : ", self.LastEpochResults["LastEpochTestLoss"])
 
     def LastEpochResultSave(self, save_path):
-        """ Save all last epoch result to specified derectory.
+        """ Save all last epoch result to specified json derectory.
         """
         save_file_name = join(save_path, "last_epoch_results.json")
         with open(save_file_name, 'w') as f:
@@ -222,7 +239,7 @@ def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
     parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
     parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
-    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
+    parser.add_argument('--epoch', type=int, default=2, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
@@ -269,6 +286,16 @@ def main(trial):
     test_mini_data_num = int(test_frame_num/Non_duplicate_length)
     BestMAE = 360
     BestMDE = 100000
+    log.sequence_length = args.sequence_length
+    log.pred_future_time = args.pred_future_time
+    log.model = args.model
+    log.max_epoch = args.epoch
+    log.is_output_unit = args.is_output_unit
+    log.lr = round(lr, 6)
+    log.trial_num = trial.number
+    log.batch_size = batch_size
+    log.num_layers = num_layers
+    log.hidden_size = hidden_size
 
     # イテレーション数計算
     # train_iter_num = int(train_data_num/(sequence_length*batch_size))
@@ -280,6 +307,7 @@ def main(trial):
     print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
+        log.epoch = epoch
         running_loss = 0.0
         angleErrSum = 0
         distanceErrSum = 0
@@ -305,7 +333,6 @@ def main(trial):
                                     selected_correct_columns, mini_batch_train_random_list, pred_future_time,
                                     args.is_output_unit, Non_duplicate_length, Non_duplicate_length_offset,
                                     args.is_train_smp2foot)
-            # print("label.shape", label.shape)
 
             data = data.squeeze()  
             # print("data.shape", data.shape)#torch.Size([30, 32, 6])sequence, batch size, feature num # (T, N, E)
@@ -341,7 +368,6 @@ def main(trial):
         MDE_tr = distanceErrSum/(train_iter_num-1)
         TrainAngleErrResult.append(MAE_tr)
         TrainDistanceErrResult.append(MDE_tr)
-        # print(angleErrSum)
         tqdm.write(f"train mean angle and distance error = {MAE_tr}[度], {MDE_tr}[m]")
 
         # test
@@ -421,29 +447,32 @@ def main(trial):
     # ax5.set_ylim(0, 0.6)
     # ax6.set_ylim(0, 0.5)
 
-    train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
-    test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
+    log.train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
+    log.test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
+    log.BestMAE = str(f"{BestMAE:.02f}")
     StartTime = log.TrainStartTime
-    dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}_trial25_epoch{args.epoch}_unit{args.is_output_unit}_train{train_filename}_test{test_filename}"
+    
+    dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}"
     dir_name = dir_name.replace(".", "").replace(" ", "").replace("-", "")
     dir_path = join(img_save_path, dir_name)
     os.makedirs(dir_path, exist_ok=True)
 
-    # print last epoch result to console
+    train_info_log_path = join(dir_path, "train_info_log.txt")
+    log.train_info_log(train_info_log_path)
     log.LastEpochResultsShow()
-    log.LastEpochResultSave(img_save_path)
+    log.LastEpochResultSave(dir_path)
 
     # trialごとにweight fileをsaveする
     rounded_mae = round(MAE_te, 5)
     rouded_mde = round(MDE_te, 5)
-    weight_fiel_name = f"trial{trial.number}_MAE{rounded_mae}_MDE{rouded_mde}_lr{lr:.06f}_batch_size_{batch_size}_num_layers{num_layers}_hiddensize{hidden_size}_seq{sequence_length}_pred{pred_future_time}.pth"
-    weight_save_path = join(img_save_path, weight_fiel_name)
+    weight_file_name = f"trial{trial.number}_MAE{rounded_mae}_MDE{rouded_mde}_lr{lr:.06f}_batch_size_{batch_size}_num_layers{num_layers}_hiddensize{hidden_size}_seq{sequence_length}_pred{pred_future_time}.pth"
+    weight_save_path = join(img_save_path, dir_name, weight_file_name)
     torch.save(model.state_dict(), weight_save_path)
 
     # trialごとに推論結果のグラフを保存
     if img_save_flag == True:
-        file_name = f"err_{BestMAE:.02f}_trial{trial.number}_lr_{lr:.06f}_batch_size_{batch_size}_num_layers_{num_layers}_hidden_size{hidden_size}_seq_length{sequence_length}_pred_future_time{pred_future_time}.png"
-        fig.savefig(join(img_save_path, file_name))
+        file_name = f"err_{BestMAE:.02f}_trial{trial.number}.png"
+        fig.savefig(join(img_save_path, dir_name, file_name))
     print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
     print("finished objective")
     return MAE_te

@@ -3,7 +3,7 @@ name: issue template
 about: This temolate is basic template
 title: ''
 labels: ''
-assignees: ''
+assignees: oki5656
 
 ---
 
@@ -12,7 +12,10 @@ assignees: ''
 ## Branch name
 
 ## ToDo
-- [ ] XXX
+- [ ] branch から を作成
+- [ ] 実装
+- [ ] PR
+- [ ] マージ
 
 ## Deadline
 

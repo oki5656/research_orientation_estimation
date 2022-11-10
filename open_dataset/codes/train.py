@@ -2,11 +2,10 @@
 ########################################################################
 import os
 import sys
-a=os.path.dirname(sys.executable)
+# a=os.path.dirname(sys.executable)
 print(os.path.dirname(sys.executable))
 ########################################################################
 
-import re
 import math
 import random
 import json
@@ -18,7 +17,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from os.path import join
-import decimal
 import optuna
 import datetime
 import argparse
@@ -38,7 +36,8 @@ train_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "s
 test_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 # test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
-selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
+selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z']
+# selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 Non_duplicate_length = 10
 #########################################################################################################
 
@@ -91,8 +90,9 @@ def ConvertUnitVec(dir_vec):
     return unit_dir_vec
 
 
-def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
-              mini_batch_random_list, pred_future_time, is_output_unit, Non_duplicate_length, Non_duplicate_length_offset):
+def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns,
+              selected_correct_columns, mini_batch_random_list, pred_future_time, is_output_unit,
+              Non_duplicate_length, Non_duplicate_length_offset, is_train_smp2foot):
     """train_x, train_tを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)と
     dir_vec(sequence_length, batch_size, input_size)を返す
     Args : 
@@ -121,8 +121,11 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
     # print("out_x.shape", out_x.shape)# out_x.shape (19, 30, 6)=(batch size, sequence length, x-feature num)
     # print("out_t.shape", out_t.shape)# out_t.shape (19, 41, 7)=(batch size, now to future length, t-feature num)
 
-    # スマホ座標系に変換
-    dir_vec = TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time)# dir_vec.shape : (batch size, 3)
+    # スマホ座標系正解ベクトル生成
+    if is_train_smp2foot:
+        dir_vec = TransWithQuatSMP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time)
+    else:
+        dir_vec = TransWithQuatP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time)# dir_vec.shape : (batch size, 3)
 
     if is_output_unit == "true":
         unit_dir_vec = ConvertUnitVec(dir_vec) # dir_vecのある行が0だとnanを生成してしまう。
@@ -131,7 +134,32 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
         return torch.tensor(batch_x_df_np), torch.tensor(dir_vec)
 
 
-def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
+def TransWithQuatSMP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time):
+    """
+    Returns : 
+        dirvec (ndarray) : 現在スマホ位置から未来すらわちpred_future_timeの足の位置への方向ベクトル
+    """
+    dir_vec = np.ones((batch_size, 3))
+
+    for j in range(batch_size):
+        qW, qX, qY, qZ = batch_t_df_np[0][j][3], batch_t_df_np[0][j][4], batch_t_df_np[0][j][5], batch_t_df_np[0][j][6]
+
+        # クォータニオン表現による回転行列
+        E = np.array([[qX**2 - qY**2 - qZ**2 + qW**2, 2*(qX*qY - qZ*qW), 2*(qX*qZ + qY*qW)],
+                [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
+                [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])
+
+        # ２点(現在スマホ位置から未来すらわちpred_future_timeの足の位置)から方向ベクトルを求める
+        corr_dir_vec = np.array([batch_t_df_np[pred_future_time][j][0] - batch_t_df_np[0][j][7],
+                                 batch_t_df_np[pred_future_time][j][1] - batch_t_df_np[0][j][8],
+                                 batch_t_df_np[pred_future_time][j][2] - batch_t_df_np[0][j][9]])
+        smh_dir_vec = np.matmul(E.T, corr_dir_vec.T)#  転地するかも。スマートフォン座標系進行方向ベクトル生成。
+        dir_vec[j][0], dir_vec[j][1], dir_vec[j][2] = smh_dir_vec[0], smh_dir_vec[1], smh_dir_vec[2]
+
+    return dir_vec
+
+
+def TransWithQuatP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time):
     """
     """
     dir_vec = np.ones((batch_size, 3))
@@ -150,6 +178,7 @@ def TransWithQuat(batch_t_df_np, batch_size, sequence_length, pred_future_time):
         dir_vec[j][0], dir_vec[j][1], dir_vec[j][2] = smh_dir_vec[0], smh_dir_vec[1], smh_dir_vec[2]
 
     return dir_vec
+
 
 class Log():
     def __init__(self):
@@ -197,6 +226,7 @@ def main(trial):
     parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
+    parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
     parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
     args = parser.parse_args()
@@ -273,7 +303,8 @@ def main(trial):
 
             data, label = MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns,
                                     selected_correct_columns, mini_batch_train_random_list, pred_future_time,
-                                    args.is_output_unit, Non_duplicate_length, Non_duplicate_length_offset)
+                                    args.is_output_unit, Non_duplicate_length, Non_duplicate_length_offset,
+                                    args.is_train_smp2foot)
             # print("label.shape", label.shape)
 
             data = data.squeeze()  
@@ -325,7 +356,7 @@ def main(trial):
         for i in tqdm(range(test_iter_num)):
             data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
                                     mini_batch_test_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
-                                    Non_duplicate_length_offset)
+                                    Non_duplicate_length_offset, args.is_train_smp2foot)
             data.to(device)
             label.to(device)
 
@@ -361,7 +392,7 @@ def main(trial):
         BestMDE = min(BestMDE, MDE_te)
         if BestMAE == MAE_te:
             img_save_flag = True
-        tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}")
+        tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}, {BestMDE}")
 
     # graph plotting
     fig = plt.figure(figsize = [9.0, 6.0])# [横幅, 高さ]
@@ -390,7 +421,6 @@ def main(trial):
     # ax5.set_ylim(0, 0.6)
     # ax6.set_ylim(0, 0.5)
 
-    # plt.show()
     train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
     test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
     StartTime = log.TrainStartTime

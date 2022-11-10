@@ -46,7 +46,7 @@ number_of_predict_position = 50
 ##########################################################################################################################
 output_dim = 3 # 進行方向ベクトルの要素数
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
-selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z',]
+selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z']
 args = parser.parse_args()
 
 # mode; setting

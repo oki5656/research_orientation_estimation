@@ -51,7 +51,6 @@ selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z']
 args = parser.parse_args()
 
-# mode; setting
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers,
                      output_dim, sequence_length, args.input_shift)
@@ -72,29 +71,6 @@ def data_loader(path, train_columns, correct_columns, start_col):
     return train_x_df, train_t_df
 
 
-def TransWithQuat(batch_t_df_np, pred_future_time):
-    """正解の進行方向ベクトルを出力する
-    Args : 
-        batch_t_df_np (ndarray) : train_t_dfからseq_length+pred_fut_time分を抽出したもの
-        pred_future_time (int) : どれくらい未来を予測するか
-    Returns : 
-        dir_vec (ndarray) : スマートフォン座標系の正解進行方向ベクトル
-    """
-    dir_vec = np.ones(3)
-
-    qW, qX, qY, qZ = batch_t_df_np[0][3], batch_t_df_np[0][4], batch_t_df_np[0][5], batch_t_df_np[0][6]
-    E = np.array([[qX**2 - qY**2 - qZ**2 + qW**2, 2*(qX*qY - qZ*qW), 2*(qX*qZ + qY*qW)],
-            [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
-            [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])#クォータニオン表現による回転行列
-    corr_dir_vec = np.array([batch_t_df_np[pred_future_time][0] - batch_t_df_np[0][0],
-                                batch_t_df_np[pred_future_time][1] - batch_t_df_np[0][1],
-                                batch_t_df_np[pred_future_time][2] - batch_t_df_np[0][2]])#２点(現在とpred_future_time)の位置から進行方向ベクトルを求めた
-    smh_dir_vec = np.matmul(E.T, corr_dir_vec.T)##############################  転地するかも。スマートフォン座標系進行方向ベクトル生成。
-    dir_vec[0], dir_vec[1], dir_vec[2] = smh_dir_vec[0], smh_dir_vec[1], smh_dir_vec[2]
-
-    return dir_vec
-
-
 def TransWithQuatSMP2P(batch_t_df_np, output, pred_future_time):
     """正解の進行方向ベクトルを出力する
     Args : 
@@ -103,7 +79,6 @@ def TransWithQuatSMP2P(batch_t_df_np, output, pred_future_time):
     Returns : 
         dirvec (ndarray) : 現在スマホ位置から未来すらわちpred_future_timeの足の位置への方向ベクトル（世界座標系）
     """
-    # dir_vec = np.ones(3)
     qW, qX, qY, qZ = batch_t_df_np[0][3], batch_t_df_np[0][4], batch_t_df_np[0][5], batch_t_df_np[0][6]
 
     # クォータニオン表現による回転行列
@@ -114,7 +89,6 @@ def TransWithQuatSMP2P(batch_t_df_np, output, pred_future_time):
     # スマホ座標系次歩推定ベクトルを求める
     smp_dir_vec = np.array([output[0], output[1], output[2]])
     world_dir_vec = np.matmul(E, smp_dir_vec.T)#  世界座標系進行方向ベクトル生成。
-    # dir_vec[0], dir_vec[1], dir_vec[2] = world_dir_vec[0], world_dir_vec[1], world_dir_vec[2]
 
     return world_dir_vec
 
@@ -133,29 +107,19 @@ def predict(train_x_df, train_t_df):
     world_pred_next_step_positions = []
     world_foot_positions = []
 
-    # TODO smp_posi, leg_posiの違いに着目して実装する
-
     if args.model == "transformer_encdec":
         shift = args.input_shift
-        # src = data[:sequence_length-shift, :, :]
-        # tgt = data[shift:, :, :]
         for i in range(number_of_predict_position):
             start_col = i*predicted_frequency
             src = torch.tensor(np.array(train_x_df[start_col:start_col+sequence_length-shift])).unsqueeze(1)
             tgt = torch.tensor(np.array(train_x_df[start_col+shift:start_col+sequence_length])).unsqueeze(1)
             output = model(src=src.float().to(device), tgt=tgt.float().to(device)).cpu().detach().numpy()
-            # correct = np.array(train_t_df.iloc[start_col+sequence_length+pred_future_frame])
             
             world_dir_vec = TransWithQuatSMP2P(np.array(train_t_df.iloc[start_col + sequence_length - 1: start_col + sequence_length + pred_future_frame]),
                                                output, pred_future_frame)
 
-
-            # smp_position = np.array(train_t_df.iloc[start_col+sequence_length])
             world_smp_position = np.array(train_t_df.iloc[start_col+sequence_length-1, 7:10])
             world_foot_position = np.array(train_t_df.iloc[start_col+sequence_length+pred_future_frame, 0:4])
-            # outputs.append(output)
-            # correct_dirctions.append(correct)
-            # smp_positions.append(smp_position)
             world_pred_next_step_positions.append(world_smp_position+world_dir_vec)
             world_foot_positions.append(world_foot_position)
 
@@ -167,7 +131,6 @@ def predict(train_x_df, train_t_df):
 
     assert len(outputs) == len(correct_dirctions), "length of outouts and length of corrects is different. you should check th code."
 
-    # return outputs, correct_dirctions, smp_positions
     return world_foot_positions, world_pred_next_step_positions
 
 
@@ -222,15 +185,7 @@ def calc_err(outputs, corrects):
 # def draw_trajectry(outputs, correct_dirctions, smp_positions):
 def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
-    pred_next_step_positions = []
     for i in range(number_of_predict_position):
-        # qW, qX, qY, qZ = smp_positions[i][3], smp_positions[i][4], smp_positions[i][5], smp_positions[i][6]
-        # smt_dir_vec = np.array([outputs[i][0], outputs[i][1], outputs[i][2]])
-        # R_smt2world = np.array([[qX**2 - qY**2 - qZ**2 + qW**2, 2*(qX*qY - qZ*qW), 2*(qX*qZ + qY*qW)],
-        #                         [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
-        #                         [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])
-        # word_dirction_vector = np.matmul(R_smt2world, smt_dir_vec.T)
-        # pred_next_step_positions.append(word_dirction_vector+smp_positions[i][:3])
         color_list.insert(0, [0, 0, 0])
 
     # 描画

@@ -162,6 +162,8 @@ def TransWithQuatSMP2P(batch_t_df_np, batch_size, sequence_length, pred_future_t
 
 def TransWithQuatP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time):
     """
+    Returns : 
+    dirvec (ndarray) : 現在位置(px, py, pz)から未来位置(px, py, pz)への方向ベクトル。px, py, pzを予測する
     """
     dir_vec = np.ones((batch_size, 3))
     # print("batch_t_df_np.shape", batch_t_df_np.shape) # (now to future length, batch size, t-feature num)

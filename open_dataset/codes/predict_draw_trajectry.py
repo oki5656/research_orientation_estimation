@@ -1,24 +1,9 @@
-
-from faulthandler import disable
-import os
-import sys
-import re
-import math
-import random
-import json
 import torch
-import torch.nn as nn
 import pandas as pd
-from torch.optim import SGD, lr_scheduler
 from matplotlib import pyplot as plt
 import numpy as np
-from tqdm import tqdm
 from os.path import join
-import decimal
-import optuna
-import datetime
 import argparse
-from distutils.util import strtobool
 
 from models import choose_model, MODEL_DICT
 
@@ -29,10 +14,10 @@ parser.add_argument('--model', type=str, default="transformer_encdec", help=f'ch
 # parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
 # parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
-test_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
+test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 # weight_path = os.path.join("..", "images", "2211021545_transformer_encdec_seq21_pred33_trial25_epoch100_unitfalse_trainsum_Take20220809_083159001and003nan_removed_testTake20220809_083159pm_002nan_removed",
 #                            "trial23_MAE6.44.pth")
-weight_path = os.path.join("..", "images", "2211110002_transformer_encdec_seq15_pred21",
+weight_path = join("..", "images", "2211110002_transformer_encdec_seq15_pred21",
                            "trial23_MAE5.14978_MDE138.07636_lr0.000102_batch_size_8_num_layers3_hiddensize38_seq15_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 sequence_length = 15
@@ -86,8 +71,7 @@ def TransWithQuatSMP2P(batch_t_df_np, output, pred_future_time):
             [2*(qX*qY + qZ*qW), -qX**2 + qY**2 - qZ**2 + qW**2, 2*(qY*qZ - qX*qW)],
             [2*(qX*qZ - qY*qW), 2*(qY*qZ + qX*qW), -qX**2 - qY**2 + qZ**2 + qW**2]])
 
-    # スマホ座標系次歩推定ベクトルを求める
-    smp_dir_vec = np.array([output[0], output[1], output[2]])
+    smp_dir_vec = np.array([output[0], output[1], output[2]])# スマホ座標系次歩推定ベクトル
     world_dir_vec = np.matmul(E, smp_dir_vec.T)#  世界座標系進行方向ベクトル生成。
 
     return world_dir_vec
@@ -182,15 +166,14 @@ def calc_err(outputs, corrects):
     return color_list
 
 
-# def draw_trajectry(outputs, correct_dirctions, smp_positions):
 def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
     for i in range(number_of_predict_position):
         color_list.insert(0, [0, 0, 0])
 
     # 描画
-    world_foot_positions = np.array(world_foot_positions)
-    world_pred_next_step_positions = np.array(world_pred_next_step_positions)
+    world_foot_positions = np.array(world_foot_positions)/1000
+    world_pred_next_step_positions = np.array(world_pred_next_step_positions)/1000
     color_list = np.array(color_list)/255
     x = np.concatenate([world_foot_positions[:, 0], world_pred_next_step_positions[:, 0]])
     y = np.concatenate([world_foot_positions[:, 1], world_pred_next_step_positions[:, 1]])
@@ -212,9 +195,7 @@ def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
 def main():
     train_x_df, train_t_df = data_loader(test_data_path, selected_train_columns, selected_correct_columns,
                                          test_data_start_col)
-    # outputs, correct_dirctions, smp_positions = predict(train_x_df, train_t_df)
     world_foot_positions, world_pred_next_step_positions = predict(train_x_df, train_t_df)
-    # draw_trajectry(outputs, correct_dirctions, smp_positions)
     draw_trajectry(world_foot_positions, world_pred_next_step_positions)
 
 main()

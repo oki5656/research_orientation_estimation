@@ -10,22 +10,24 @@ from models import choose_model, MODEL_DICT
 
 parser = argparse.ArgumentParser(description='training argument')
 ##########################################################################################################################
-parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
+parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
 # parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
 # parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
 test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 # weight_path = os.path.join("..", "images", "2211021545_transformer_encdec_seq21_pred33_trial25_epoch100_unitfalse_trainsum_Take20220809_083159001and003nan_removed_testTake20220809_083159pm_002nan_removed",
 #                            "trial23_MAE6.44.pth")
-weight_path = join("..", "images", "2211110002_transformer_encdec_seq15_pred21",
-                           "trial23_MAE5.14978_MDE138.07636_lr0.000102_batch_size_8_num_layers3_hiddensize38_seq15_pred21.pth")
+# weight_path = join("..", "images", "2211110002_transformer_encdec_seq15_pred21",
+#                            "trial23_MAE5.14978_MDE138.07636_lr0.000102_batch_size_8_num_layers3_hiddensize38_seq15_pred21.pth")
+weight_path = join("..", "images", "2211140648_lstm_seq27_pred21", "trial13_MAE3.00714_MDE70.11617_lr0.001630_batch_size_8_num_layers3_hiddensize76_seq27_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
-sequence_length = 15
+sequence_length = 27
 pred_future_frame =21
-hidden_size = 13
-num_layers = 8
+hidden_size = 76
+num_layers = 3
 batch_size = 8
-test_data_start_col = 30*(20+10)
+nhead = 3
+test_data_start_col = 30*(360)
 # test_data_start_col = 30*(20+15)
 # test_data_end_col = 10
 predicted_frequency = 1 # means test data is used 1 in selected "value" lines
@@ -38,7 +40,7 @@ args = parser.parse_args()
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers,
-                     output_dim, sequence_length, args.input_shift)
+                     nhead, output_dim, sequence_length, args.input_shift)
 model = model.float()
 model.to(device)
 model.load_state_dict(torch.load(weight_path))
@@ -87,31 +89,34 @@ def predict(train_x_df, train_t_df):
     """
     outputs = []
     correct_dirctions = []
-    smp_positions = []
     world_pred_next_step_positions = []
     world_foot_positions = []
 
-    if args.model == "transformer_encdec":
-        shift = args.input_shift
-        for i in range(number_of_predict_position):
-            start_col = i*predicted_frequency
+    # if args.model == "transformer_encdec":
+    shift = args.input_shift
+    for i in range(number_of_predict_position):
+        start_col = (i+test_data_start_col)*predicted_frequency
+        if args.model == "transformer_encdec":
             src = torch.tensor(np.array(train_x_df[start_col:start_col+sequence_length-shift])).unsqueeze(1)
             tgt = torch.tensor(np.array(train_x_df[start_col+shift:start_col+sequence_length])).unsqueeze(1)
             output = model(src=src.float().to(device), tgt=tgt.float().to(device)).cpu().detach().numpy()
-            
-            world_dir_vec = TransWithQuatSMP2P(np.array(train_t_df.iloc[start_col + sequence_length - 1: start_col + sequence_length + pred_future_frame]),
-                                               output, pred_future_frame)
+        elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
+            data = torch.tensor(np.array(train_x_df[start_col:start_col+sequence_length])).unsqueeze(1)
+            output = model(data.float().to(device)).cpu().detach().numpy()
+        else:
+            print(" specify light model name")
+        world_dir_vec = TransWithQuatSMP2P(np.array(train_t_df.iloc[start_col + sequence_length - 1: start_col + sequence_length + pred_future_frame]),
+                                            output, pred_future_frame)
 
-            world_smp_position = np.array(train_t_df.iloc[start_col+sequence_length-1, 7:10])
-            world_foot_position = np.array(train_t_df.iloc[start_col+sequence_length+pred_future_frame, 0:4])
-            world_pred_next_step_positions.append(world_smp_position+world_dir_vec)
-            world_foot_positions.append(world_foot_position)
+        world_smp_position = np.array(train_t_df.iloc[start_col+sequence_length-1, 7:10])
+        world_foot_position = np.array(train_t_df.iloc[start_col+sequence_length+pred_future_frame, 0:4])
+        world_pred_next_step_positions.append(world_smp_position+world_dir_vec)
+        world_foot_positions.append(world_foot_position)
 
-    elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
-        pass
-        # output = model(data.float().to(device))
-    else:
-        print(" specify light model name")
+    # elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
+    #     data = torch.tensor(np.array(train_x_df[start_col:start_col+sequence_length])).unsqueeze(1)
+    #     output = model(data.float().to(device)).cpu().detach().numpy()
+
 
     assert len(outputs) == len(correct_dirctions), "length of outouts and length of corrects is different. you should check th code."
 
@@ -188,6 +193,10 @@ def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
     ax.set_xlim(mid_x - max_range, mid_x + max_range)
     ax.set_ylim(mid_y - max_range, mid_y + max_range)
     ax.set_zlim(mid_z - max_range, mid_z + max_range)
+    # plt.legend(("100mm", "200mm", "300mm", "400mm", "500mm", "others"))
+    ax.set_xlabel("[m]")
+    ax.set_ylabel("[m]")
+    ax.set_zlabel("[m]")
     plt.show()
     pass
 

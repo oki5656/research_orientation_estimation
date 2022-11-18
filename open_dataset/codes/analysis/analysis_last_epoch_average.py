@@ -6,12 +6,51 @@ import matplotlib.pyplot as plt
 
 #################################################################################################
 Last_epoch_Result = {
-"LastEpochTestAngleErr":[6.81858,8.98204,13.71329,14.21483,7.98704,8.92155,13.59949,9.02676,6.83336,5.72655,15.3052,8.6753,8.26029,4.69854,13.36101,9.91575],
-"LastEpochTestDistanceErr":[199.67396,350.65436,342.60827,366.32961,322.16422,284.07606,390.69003,237.21095,186.21616,166.15754,384.58439,264.50111,214.12926,215.58754,391.92223,297.03712],
-"LastEpochTestLoss":[97.19674,157.91808,183.07376,170.31676,164.31998,134.7551,197.28801,119.69387,93.08525,85.02995,187.70425,137.7478,107.76198,110.54442,200.50214,142.43503]
-
+    "LastEpochTestAngleErr": [
+        12.21778,
+        11.82203,
+        10.05142
+    ],
+    "LastEpochTestDistanceErr": [
+        369.55231,
+        353.72016,
+        337.76517
+    ],
+    "LastEpochTestLoss": [
+        175.11496,
+        171.65381,
+        176.36253
+    ]
 }
 #################################################################################################
+
+class AnalysisLastEpochAverage():
+    def _init_():
+        Last_epoch_Result = {
+            "LastEpochTestAngleErr":[],
+            "LastEpochTestDistanceErr":[],
+            "LastEpochTestLoss":[]
+        }
+
+    def add_result(self, test_angle_err, test_distance_err, test_loss):
+        self.Last_epoch_Result["LastEpochTestAngleErr"].append( test_angle_err)
+        self.Last_epoch_Result["LastEpochTestDistanceErr"].append(test_distance_err)
+        self.Last_epoch_Result["LastEpochTestLoss"].append(test_loss)
+        pass
+
+    def calc_average_last_epoch_result(self):
+        RankingLastEpochTestAngleError = sorted(self.Last_epoch_Result["LastEpochTestAngleErr"])
+        RankingLastEpochTestDistanceErr = sorted(self.Last_epoch_Result["LastEpochTestDistanceErr"])
+        RankingLastEpochTestLoss = sorted(self.Last_epoch_Result["LastEpochTestLoss"])
+        # print("Average last epoch test angle error", round(mean(RankingLastEpochTestAngleError[:5]), 5))
+        # print("Average last epoch test distance error", round(mean(RankingLastEpochTestDistanceErr[:5]), 5))
+        # print("Average last epoch test loss", round(mean(RankingLastEpochTestLoss[:5]), 5))
+        average_last_epoch_test_angle_error = round(mean(RankingLastEpochTestAngleError[:5]), 5)
+        average_last_epoch_test_distance_error = round(mean(RankingLastEpochTestDistanceErr[:5]), 5)
+        average_last_epoch_test_loss = round(mean(RankingLastEpochTestLoss[:5]), 5)
+        
+        return average_last_epoch_test_angle_error, average_last_epoch_test_distance_error, average_last_epoch_test_loss
+
 
 RankingLastEpochTestAngleError = sorted(Last_epoch_Result["LastEpochTestAngleErr"])
 RankingLastEpochTestDistanceErr = sorted(Last_epoch_Result["LastEpochTestDistanceErr"])

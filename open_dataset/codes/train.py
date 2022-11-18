@@ -21,6 +21,7 @@ from os.path import join
 import optuna
 import datetime
 import argparse
+from statistics import mean
 from distutils.util import strtobool
 
 from models import choose_model, MODEL_DICT
@@ -192,10 +193,10 @@ class Log():
 
     def train_info_log(self, train_info_log_path):
         if os.path.isfile(train_info_log_path):
-            
             with open(train_info_log_path, mode='a') as f:
                 s = f"\ntrial:{self.trial_num} BestMAE:{self.BestMAE} lr:{self.lr} "\
-                    f"batch_size:{self.batch_size} num_layers:{self.num_layers} hidden_size:{self.hidden_size} "
+                    f"batch_size:{self.batch_size} num_layers:{self.num_layers} hidden_size:{self.hidden_size} "\
+                    f"nhead:{self.nhead}"
                 f.write(s)
         else:
             with open(train_info_log_path, 'w') as f:
@@ -222,12 +223,35 @@ class Log():
             self.LastEpochResults["LastEpochTestDistanceErr"].append(round(LastEpochTestDistanceErr, 5))
             self.LastEpochResults["LastEpochTestLoss"].append(round(LastEpochTestLoss, 5))
 
+
     def LastEpochResultsShow(self):
         """ Show all last epoch result to console.
         """
         print("LastEpochTestAngleErr : ", self.LastEpochResults["LastEpochTestAngleErr"])
         print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
         print("LastEpochTestLoss : ", self.LastEpochResults["LastEpochTestLoss"])
+
+
+    def AverageLastEpochResultSave(self):
+        nan_remove_last_epoch_test_angle_error = [x for x in self.LastEpochResults["LastEpochTestAngleErr"] if not math.isnan(x)]
+        nan_remove_last_epoch_test_distance_error = [x for x in self.LastEpochResults["LastEpochTestDistanceErr"] if not math.isnan(x)]
+        nan_remove_last_epoch_test_loss = [x for x in self.LastEpochResults["LastEpochTestLoss"] if not math.isnan(x)]
+
+        RankingLastEpochTestAngleError = sorted(nan_remove_last_epoch_test_angle_error)
+        RankingLastEpochTestDistanceErr = sorted(nan_remove_last_epoch_test_distance_error)
+        RankingLastEpochTestLoss = sorted(nan_remove_last_epoch_test_loss)
+
+        average_last_epoch_test_angle_error = round(mean(RankingLastEpochTestAngleError[:5]), 5)
+        average_last_epoch_test_distance_error = round(mean(RankingLastEpochTestDistanceErr[:5]), 5)
+        average_last_epoch_test_loss = round(mean(RankingLastEpochTestLoss[:5]), 5)
+        save_file_path = join(self.train_info_dir_path, "last_epoch_average.txt")
+        with open(save_file_path, 'w') as f:
+            s = f"average_last_epoch_test_angle_error:{average_last_epoch_test_angle_error}"\
+                f"\naverage_last_epoch_test_distance_error:{average_last_epoch_test_distance_error}"\
+                f"\naverage_last_epoch_test_loss:{average_last_epoch_test_loss}"
+            f.write(s)
+        # return average_last_epoch_test_angle_error, average_last_epoch_test_distance_error, average_last_epoch_test_loss 
+
 
     def LastEpochResultSave(self, save_path):
         """ Save all last epoch result to specified json derectory.
@@ -241,7 +265,7 @@ def main(trial):
     parser = argparse.ArgumentParser(description='training argument')
     parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
     parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
-    parser.add_argument('--epoch', type=int, default=2, help='specify epochs number')
+    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
     parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
     parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
@@ -250,17 +274,24 @@ def main(trial):
     # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
     args = parser.parse_args()
 
-    # print("start objective")
-    hidden_size = trial.suggest_int('hidden_size', 5, 100)
-    # hidden_size = 50
-    num_layers = trial.suggest_int('num_layers', 1, 10)
+    if args.model == "transformer_encdec":
+        hidden_size = 10
+        num_layers = 5
+        nhead = trial.suggest_categorical('nhead', [1, 2, 3, 6])
+    elif args.model == "lstm":
+        hidden_size = trial.suggest_int('hidden_size', 5, 100)
+        num_layers = trial.suggest_int('num_layers', 1, 10)
+        nhead = 3
+    else:
+        hidden_size = trial.suggest_int('hidden_size', 5, 100)
+        num_layers = trial.suggest_int('num_layers', 1, 10)
+        nhead = trial.suggest_categorical('nhead', [1, 2, 3, 6])
     # batch_size = trial.suggest_int('batch_size', 4, 32)
     batch_size = 8
     sequence_length = args.sequence_length # 30 # x means this model use previous time for 0.01*x seconds 
     pred_future_time = args.pred_future_time # 40 # x means this model predict 0.01*x seconds later
     output_dim = 3 # 進行方向ベクトルの要素数
     lr = trial.suggest_float('lr', 0.0001, 0.1, log=True)
-    # lr = 0.0005
     img_save_flag = False#fixed
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
@@ -270,7 +301,7 @@ def main(trial):
 
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length, args.input_shift)
+    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, nhead, output_dim, sequence_length, args.input_shift)
     model = model.float()
     model.to(device)
     criterion = nn.L1Loss()#nn.MSELoss()
@@ -298,23 +329,24 @@ def main(trial):
     log.batch_size = batch_size
     log.num_layers = num_layers
     log.hidden_size = hidden_size
+    log.nhead = nhead
 
     # イテレーション数計算
-    # train_iter_num = int(train_data_num/(sequence_length*batch_size))
-    # test_iter_num = int(test_data_num/(sequence_length*batch_size))
     train_use_data_num = train_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
     test_use_data_num = test_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
     train_iter_num = train_use_data_num//batch_size
     test_iter_num = test_use_data_num//batch_size
-    print(f"model name : {args.model}, batch size : {batch_size}, hidden_size : {hidden_size}, num_layers : {num_layers}, sequence_length : {sequence_length}, pred_future_time : {pred_future_time}")
+    print(
+    f"max_epoch:{args.epoch}, model_name:{args.model}, batch_size:{batch_size}, hidden_size:{hidden_size}, "\
+    f"num_layers:{num_layers}, sequence_length:{sequence_length}, pred_future_time:"\
+    f"{pred_future_time}, nhead:{nhead}"
+    )
     for epoch in range(args.epoch):
         print("\nstart", epoch, "epoch")
         log.epoch = epoch
         running_loss = 0.0
         angleErrSum = 0
         distanceErrSum = 0
-        # train_mini_data_num = int(train_data_num/sequence_length)
-        # test_mini_data_num = int(test_data_num/sequence_length)
 
         Non_duplicate_length_offset = np.random.randint(0, Non_duplicate_length)
         train_random_num_list = random.sample(range(1, train_use_data_num + 1),
@@ -452,6 +484,7 @@ def main(trial):
     log.train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
     log.test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
     log.BestMAE = str(f"{BestMAE:.02f}")
+    
     StartTime = log.TrainStartTime
     
     dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}"
@@ -460,6 +493,7 @@ def main(trial):
     os.makedirs(dir_path, exist_ok=True)
 
     train_info_log_path = join(dir_path, "train_info_log.txt")
+    log.train_info_dir_path = dir_path
     log.train_info_log(train_info_log_path)
     log.LastEpochResultsShow()
     log.LastEpochResultSave(dir_path)
@@ -484,6 +518,8 @@ if __name__ == '__main__':
     cwd = os.getcwd()
     print("now directory is", cwd)
     log = Log()
+    # analysis = AnalysisLastEpochAverage()
     TRIAL_NUM = 25
     study = optuna.create_study()
     study.optimize(main, n_trials=TRIAL_NUM)
+    log.AverageLastEpochResultSave()

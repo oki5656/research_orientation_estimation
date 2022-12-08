@@ -177,8 +177,8 @@ def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
         color_list.insert(0, [0, 0, 0])
 
     # 描画
-    world_foot_positions = np.array(world_foot_positions)/1000
-    world_pred_next_step_positions = np.array(world_pred_next_step_positions)/1000
+    world_foot_positions = np.array(world_foot_positions)#/1000
+    world_pred_next_step_positions = np.array(world_pred_next_step_positions)#/1000
     color_list = np.array(color_list)/255
     x = np.concatenate([world_foot_positions[:, 0], world_pred_next_step_positions[:, 0]])
     y = np.concatenate([world_foot_positions[:, 1], world_pred_next_step_positions[:, 1]])

@@ -79,6 +79,7 @@ def CalcAngleErr(output, label, batch_size):
 
     return angleErrSum/batch_size, distanceErrSum/batch_size
 
+
 def ConvertUnitVec(dir_vec):
     batch_size, _ = dir_vec.shape
     unit_dir_vec = np.empty((batch_size, 3))
@@ -501,7 +502,7 @@ def main(trial):
     # trialごとにweight fileをsaveする
     rounded_mae = round(MAE_te, 5)
     rouded_mde = round(MDE_te, 5)
-    weight_file_name = f"trial{trial.number}_MAE{rounded_mae}_MDE{rouded_mde}_lr{lr:.06f}_batch_size_{batch_size}_num_layers{num_layers}_hiddensize{hidden_size}_seq{sequence_length}_pred{pred_future_time}.pth"
+    weight_file_name = f"trial{trial.number}_MAE{rounded_mae}_MDE{rouded_mde}_lr{lr:.06f}_batch{batch_size}_nhead{nhead}_num_layers{num_layers}_hiddensize{hidden_size}_seq{sequence_length}_pred{pred_future_time}.pth"
     weight_save_path = join(img_save_path, dir_name, weight_file_name)
     torch.save(model.state_dict(), weight_save_path)
 

@@ -1,3 +1,7 @@
+# 次歩推定軌跡とその真値を描画する
+# 入力にはweight_file, sequence_length, pred_future_frame, hidden_size, num_layers, batch_size, nheadなどが必要
+# 描画をスタートするフレームNo, 描画するフレーム数，何フレームに１フレームを描画するかが設定できる
+
 import torch
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -28,8 +32,7 @@ num_layers = 3
 batch_size = 8
 nhead = 3
 test_data_start_col = 30*(360)
-# test_data_start_col = 30*(20+15)
-# test_data_end_col = 10
+# test_data_start_col = 30*(310)
 predicted_frequency = 1 # means test data is used 1 in selected "value" lines
 number_of_predict_position = 30*60
 ##########################################################################################################################

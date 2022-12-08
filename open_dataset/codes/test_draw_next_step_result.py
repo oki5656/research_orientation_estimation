@@ -1,19 +1,14 @@
+# スマートフォン座標系における物体の位置が，画像上の想定する位置に描画されるかを確かめるためのプログラム
+# self.landmarks_coodinatesにスマートフォン座標系の物体の座標を設定し，描画する画像，画像の画角（水平垂直）
+# などを設定することで使用可能
+
 import os
-import sys
 import cv2
 import glob
-import torch
 import argparse
-import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from os.path import join
-# sys.path.append('../')
-from models import choose_model, MODEL_DICT
-# from draw_next_step_result import 
-
-# selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
-# selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z']
 
 
 class DrawNextStepResult():
@@ -96,6 +91,8 @@ class DrawNextStepResult():
 
 
     def draw_next_step(self, frame, next_step_vector):
+        """次歩推定ベクトルと座標（x, y, z）を描画する
+        """
         img_path = self.images_pathes[frame]
         img = cv2.imread(img_path)
         img_name = os.path.basename(img_path)
@@ -143,6 +140,8 @@ class DrawNextStepResult():
 
 
     def predict_draw(self):
+        """次歩推定を行い次歩推定ベクトルを描画する．そしてその結果画像を保存する．
+        """
         for frame in tqdm(range(self.coodinates_num)):
             next_step_vector = self.pridict(frame)
             blend_img, img_name = self.draw_next_step(frame, next_step_vector)

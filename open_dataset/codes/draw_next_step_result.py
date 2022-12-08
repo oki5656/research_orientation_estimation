@@ -1,5 +1,5 @@
 # このファイルは次歩推定結果をスマホで撮影した画像上に描画するプログラムである．
-# 入力にはsynchronizeされたIMUとビデオ（画像）を必要とする
+# 入力にはsynchronizeされたIMUとビデオ（画像），必要な予測機の分だけの重みファイルが必要．
 # ビデオ→画像への分割はffmpeg, IMU(.mat)→IMU(.csv)への変換はmatlabを想定する
 
 import os
@@ -13,7 +13,6 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from os.path import join
-# sys.path.append('../')
 from models import choose_model, MODEL_DICT
 
 
@@ -47,7 +46,7 @@ class DrawNextStepResult():
 
 
     def process_all(self):
-        """全ての処理
+        """全ての処理を行う
         """
         assert len(self.images_pathes) == self.all_frame_num, "number of images and IMU frames is not equal"
         os.makedirs(self.drawed_img_dir, exist_ok=True)
@@ -59,7 +58,7 @@ class DrawNextStepResult():
         Args : 
             path : path to csv file which include IMU time series data
         Return : 
-            df 
+            df(pd.dataframe) : time-series data of acceleration and angular velocity
         """
         print("#######", os.path.isfile(path))
         df = pd.read_csv(path)
@@ -72,7 +71,7 @@ class DrawNextStepResult():
     def load_imu(self, frame, weight_file_name):
         """frameを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)を返す
         Args : 
-            frame : 
+            frame : 連番画像中の画像の番号．
         Returns : 
             imu : imu出力。shapeは(sequence_length, 6)
         """
@@ -88,9 +87,9 @@ class DrawNextStepResult():
     def pridict(self, frame, weight_path):
         """frameを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)を返す
         Args : 
-            frame : 
+            frame : 連番画像中の画像の番号．
         Returns : 
-            next_step_vector : スマホ座標系次歩推定結果。shapeは(?)
+            next_step_vector : スマホ座標系次歩推定結果。shapeは(3)
         """
         weight_file_name = os.path.basename(weight_path)
         if "hiddensize" in weight_file_name:
@@ -123,7 +122,6 @@ class DrawNextStepResult():
         elif self.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
             input = torch.from_numpy(imu).unsqueeze(1)
             next_step_vector = model(input.float().to(device))
-        # print("next_step_vector", next_step_vector)
 
         return next_step_vector, weight_file_name
 
@@ -159,12 +157,16 @@ class DrawNextStepResult():
 
     def draw_next_step(self, predict_number, img, draw_canvas, next_step_vector, weight_file_name):
         """何も描画されていないキャンバスに次歩推定ベクトル（実際には点というか円）を描画する
+        Args:
+            predict_number: 何番目の予測器を使用するか
+            img: 次歩推定ベクトルを描画する画像
+            draw_canvas: 次歩推定ベクトルが描画されるor描画された画像
+            next_step_vector: スマホ座標系次歩推定結果。shapeは(3)
+            weight_file_name: 重みファイル名
+        Return: 
+            draw_canvas: 次歩推定ベクトルが描画された画像
         """
-        # img_path = self.images_pathes[frame]
-        # img = cv2.imread(img_path)
-        # img_name = os.path.basename(img_path)
         height, width, _ = img.shape
-        # draw_canvas = np.zeros((height, width, ch))
 
         color_list = [
                         (0, 191, 255),
@@ -216,6 +218,15 @@ class DrawNextStepResult():
 
     
     def read_img(self, frame):
+        """連番画像の中から指定されたフレームの画像を読み込み，
+           画像(np.array)，ファイル名，白紙の画像(np.array)を出力
+        Args: 
+            frame: 連番画像中の処理に用いられる画像の番号
+        returns: 
+            img(np.array): 読み込んだ画像
+            img_name(str): 読み込んだ画像のファイル名
+            draw_canvas(np.array): 値がすべて0で読み込んだ画像と同じshapeの画像
+        """
         img_path = self.images_pathes[frame]
         img = cv2.imread(img_path)
         img_name = os.path.basename(img_path)
@@ -226,6 +237,8 @@ class DrawNextStepResult():
 
 
     def predict_draw(self):
+        """それぞれの画像に次歩推定ベクトルを描画する
+        """
         predict_model_num = len(self.weight_path_list)
         for frame in tqdm(range(self.sequence_length, self.all_frame_num-self.pred_future_time)):
             img, img_name, draw_canvas = self.read_img(frame)
@@ -238,7 +251,6 @@ class DrawNextStepResult():
 
 
 if __name__ == '__main__':
-
     cwd = os.getcwd()
     print("now directory is", cwd)
 

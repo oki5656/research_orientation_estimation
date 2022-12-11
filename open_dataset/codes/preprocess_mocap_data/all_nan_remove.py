@@ -7,7 +7,7 @@ from tqdm import tqdm
 from os.path import join
 
 #######################################################################################################################################
-synchronized_file_path = join("..", "datasets", "large_space", "synchronize", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut_foot_maker_processedsynchronize.csv")
+synchronized_file_path = join("..", "datasets", "large_space", "synchronize", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut_foot_maker_processed_15nan_remainsynchronize.csv")
 new_nan_removed_dir = join("..", "datasets", "large_space", "nan_removed")
 new_nan_removed_file_name = os.path.splitext(os.path.basename(synchronized_file_path))[0] + "_nan_removed.csv"
 ####################################################################################################################################### 

@@ -11,8 +11,8 @@ from os.path import join
 
 #######################################################################################################################################
 # mocap_file_path = join("csvdata", "all_complete_001_v1", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut_all_complete.csv")
-mocap_file_path  = join("..", "datasets", "large_space", "mocap", "foot_maker_processed", "Take 2022-08-09 08.31.59 PM_002_v1_topbuttom_cut_foot_maker_processed.csv")
-imu_file_path = join("..", "datasets", "large_space", "smartphone_imu", "sensorlog_20220809_210823_trial002_topbuttom_cut.csv")
+mocap_file_path  = join("..", "datasets", "large_space", "mocap", "foot_maker_processed_15row_interpolation", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut_foot_maker_processed_15nan_remain.csv")
+imu_file_path = join("..", "datasets", "large_space", "smartphone_imu", "sensorlog_20220809_212725_trial003_topbuttom_cut.csv")
 new_synchronize_dir = join("..", "datasets", "large_space", "synchronize")
 new_synchronize_file_name = os.path.splitext(os.path.basename(mocap_file_path))[0] + "synchronize.csv"
 XYZorQuaternion = "Quaternion"

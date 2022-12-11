@@ -12,19 +12,18 @@ from argparse import ArgumentParser, Namespace
 
 
 #######################################################################################################
-csv_file_path = join("..", "datasets", "large_space", "mocap", "top_buttom_cut", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut.csv")
-new_csv_file_folder_path = join("..", "datasets", "large_space", "mocap", "foot_maker_processed")
-new_csv_file_name = os.path.splitext(os.path.basename(csv_file_path))[0] + "_foot_maker_processed.csv"
+csv_file_path = join("..", "datasets", "large_space", "mocap", "top_buttom_cut", "Take 2022-08-09 08.31.59 PM_001_v1_topbuttom_cut.csv")
+new_csv_file_folder_path = join("..", "datasets", "large_space", "mocap", "foot_maker_processed_15row_interpolation")
+new_csv_file_name = os.path.splitext(os.path.basename(csv_file_path))[0] + "_foot_maker_processed_nan_remain_test.csv"
 XYZorQuaternion = "Quaternion"
 NotRowsNumber = 3 # not value exept for columns name. For example, imu 6F512D5A17D511EDA5E3221A4204BB97, Rotation.
 Smp_maker_number = 3
 OkSameMakerDistance = 50
+max_allowed_continuous_nan_num = 15
 #######################################################################################################
 cwd = os.getcwd()
 print("now directory is", cwd)
-# df = pd.read_csv(csv_file_path)
 
-# print(df)
 
 class PreprocessMocapFile(object):
     """Class for preprocess mocap file."""
@@ -36,6 +35,7 @@ class PreprocessMocapFile(object):
         self.rotation_columns_number = self.RotationColNumber[XYZorQuaternion]
         self.imu_col_number = 3 + self.rotation_columns_number
         self.all_rows_number, self.all_columns_number = self.df.shape
+        self.foot_marker_col_name = ["foot_maker_position_X", "foot_maker_position_Y", "foot_maker_position_Z"]
         self.imu_position_col_name = ["imu_position_x", "imu_position_y", "imu_position_z"]
         self.imu_xyz_rotation_col_name = ["imu_rotation_x", "imu_rotation_y", "imu_rotation_z"]
         self.imu_quaternion_col_name = ["imu_quaternion_x", "imu_quaternion_y", "imu_quaternion_z", "imu_quaternion_w"]
@@ -44,14 +44,18 @@ class PreprocessMocapFile(object):
         self.imu_col_name = {"XYZ" : self.imu_xyz_rotation_col_name,
                              "Quaternion" : self.imu_quaternion_col_name}
 
+
     def preprocess_all(self) -> None:
+        """全てのプロセスがこの関数に基づいて行われる
+        """
         new_df = self.make_new_dataframe()
         new_df = self.calc_foot_maker_position(new_df)
         new_df_rows_number, new_df_cols_number = new_df.shape
-        new_df = self.interpolation(new_df, new_df_rows_number, new_df_cols_number)
+        new_df = self.interpolation_all_process(new_df, new_df_rows_number, new_df_cols_number)
         os.makedirs(new_csv_file_folder_path, exist_ok=True)
         new_df.to_csv(join(new_csv_file_folder_path, new_csv_file_name))
         print("Preorocess was all completed and csv file was created. ")
+
 
     def make_new_dataframe(self):
         """ making new dataframe and setting imu_maker rataion, position
@@ -70,6 +74,7 @@ class PreprocessMocapFile(object):
 
         return new_df
 
+
     def calcurate_distance(self, reference_posi, separeted_maker_position) -> float:
         """calcurate distance between imu and a maker.
         Args :
@@ -81,6 +86,7 @@ class PreprocessMocapFile(object):
         distance = math.sqrt((reference_posi[0]-separeted_maker_position[0])**2 +\
                  (reference_posi[1]-separeted_maker_position[1])**2 + (reference_posi[2]-separeted_maker_position[2])**2)
         return distance
+
 
     def is_distance_between_makers_correct(self, distance_between_makers: float, min_distance: int, max_distance: int) -> bool:
         """check distance between two makers is correct or not
@@ -95,6 +101,7 @@ class PreprocessMocapFile(object):
             IsDistanceOK = True
 
         return IsDistanceOK
+
 
     def calcurate_correct_maker_posi(self, imu_position, feature_col):
         """calcurate correct maker position
@@ -169,6 +176,7 @@ class PreprocessMocapFile(object):
 
         return correct_maker_posi
 
+
     def calc_foot_maker_position(self, new_df):
         """calcurate foot maker position from ambiguous makers position
         Args : 
@@ -190,13 +198,65 @@ class PreprocessMocapFile(object):
             foot_maker_position_X.append(correct_maker_posi[0])
             foot_maker_position_Y.append(correct_maker_posi[1])
             foot_maker_position_Z.append(correct_maker_posi[2])
-        new_df["foot_maker_position_X"] = foot_maker_position_X
-        new_df["foot_maker_position_Y"] = foot_maker_position_Y
-        new_df["foot_maker_position_Z"] = foot_maker_position_Z
+        new_df[self.foot_marker_col_name[0]] = foot_maker_position_X
+        new_df[self.foot_marker_col_name[1]] = foot_maker_position_Y
+        new_df[self.foot_marker_col_name[2]] = foot_maker_position_Z
 
         return new_df
 
-    def interpolation(self, new_df, new_df_rows_number, new_df_cols_number):
+
+    def nan_check_per_row(self, df_iloc):
+        """1行にNanが含まれているかチェックする
+        Args: 
+            df_iloc: pandas.dataframeのある行のimu or foot_marker部分
+        Return: 1(Nanが含まれている場合), 0(Nanが含まれていない場合)
+        """
+        if 1 <= df_iloc.isna().sum():
+            return 1
+        else:
+            return 0
+
+
+    def interpolation_imu(self, new_df, i, nan_include_row_num, col_num_except_foot_marker):
+        """dfのimuデータに対して線形補間の処理を実際に行う。欠損を含む任意の連続行数を補間可能。
+        Args: 
+            new_df: 欠損を含むpandas.dataframe
+            i: 欠損を含まないフレーム。i-1フレーム以下で欠損を含んでいる。
+            nan_include_row_num: nanを含む連続行数
+            col_num_except_foot_marker: foot markerを除く列数（imuとtimeの列数）
+        Return: 
+            new_df: imu部分の線形補間がなされたpandas.dataframe
+        """
+        N = nan_include_row_num+1
+        for j in range(1, N):# 行方向
+            for k in range(col_num_except_foot_marker):# 列方向
+                if math.isnan(float(new_df.iloc[i-j, k])):
+                    new_df.iloc[i-j, k] = j*float(new_df.iloc[i-N, k])/(N) + (N-j)*float(new_df.iloc[i, k])/(N)
+
+        return new_df
+
+
+    def interpolation_foot_marker(self, new_df, i, nan_include_row_num, col_num_except_foot_marker, new_df_cols_number):
+        """dfのfoot markerデータに対して線形補間の処理を実際に行う。欠損を含む任意の連続行数を補間可能。
+        Args: 
+            new_df: 欠損を含むpandas.dataframe
+            i: 欠損を含まないフレーム。i-1フレーム以下で欠損を含んでいる。
+            nan_include_row_num: nanを含む連続行数
+            col_num_except_foot_marker: foot markerを除く列数（imuとtimeの列数）
+            new_df_cols_number: 入力のpandas.dataframeの列数
+        Return: 
+            new_df: foot marker部分の線形補間がなされたpandas.dataframe
+        """
+        N = nan_include_row_num+1
+        for j in range(1, N):# 行方向
+            for k in range(col_num_except_foot_marker, new_df_cols_number):# 列方向
+                if math.isnan(float(new_df.iloc[i-j, k])):
+                    new_df.iloc[i-j, k] = j*float(new_df.iloc[i-N, k])/(N) + (N-j)*float(new_df.iloc[i, k])/(N)
+
+        return new_df
+
+
+    def interpolation_all_process(self, new_df, new_df_rows_number, new_df_cols_number):
         """
         Args :
             new_df(pandas.dataframe) : include imu maker and calcurated foot maker information
@@ -204,27 +264,33 @@ class PreprocessMocapFile(object):
         Returns :
             new_df(pandas.dataframe) : added interpolation to rack of only one row 
         """
-        print("interpolating for removing nan")
-        # 1行欠損しているとき補間
-        for i in tqdm(range(1, new_df_rows_number - 1)):
-            # 着目している1行に1つ以上nanが含まれるか判定
-            if (1 <= new_df.iloc[i, :].isna().sum()) and (0 == new_df.iloc[i-1, :].isna().sum()) and (0 == new_df.iloc[i+1, :].isna().sum()):
-                for j in range(new_df_cols_number):
-                    if math.isnan(float(new_df.iloc[i, j])):
-                        new_df.iloc[i, j] = (float(new_df.iloc[i-1, j]) + float(new_df.iloc[i+1, j]))/2
-        
-        # 2行欠損しているとき補間
-        for i in tqdm(range(new_df_rows_number-3)):
-            if (0 == new_df.iloc[i, :].isna().sum()) and (1 <= new_df.iloc[i+1, :].isna().sum()) and (1 <= new_df.iloc[i+2, :].isna().sum()) and (0 == new_df.iloc[i+3, :].isna().sum()):
-                # 1行目の処理
-                for j in range(new_df_cols_number):
-                    if math.isnan(float(new_df.iloc[i+1, j])):
-                        new_df.iloc[i+1, j] = 2*float(new_df.iloc[i, j])/3 + float(new_df.iloc[i+3, j])/3
+        col_num_except_foot_marker = new_df_cols_number - len(self.foot_marker_col_name)
 
-                # 2行目の処理
-                for j in range(new_df_cols_number):
-                    if math.isnan(float(new_df.iloc[i+2, j])):
-                        new_df.iloc[i+2, j] = float(new_df.iloc[i, j])/3 + 2*float(new_df.iloc[i+3, j])/3
+        print("interpolating for removing nan in imu")
+        nan_include_row_num = 0
+        for i in tqdm(range(new_df_rows_number)):
+            if self.nan_check_per_row(new_df.iloc[i, :col_num_except_foot_marker]):
+                nan_include_row_num += 1
+            elif (self.nan_check_per_row(new_df.iloc[i, :col_num_except_foot_marker]) == 0) and (1 <= nan_include_row_num) and (nan_include_row_num <= max_allowed_continuous_nan_num ):
+                new_df = self.interpolation_imu(new_df, i, nan_include_row_num, col_num_except_foot_marker)
+                nan_include_row_num = 0
+            elif (self.nan_check_per_row(new_df.iloc[i, :col_num_except_foot_marker]) == 0) and (1 <= nan_include_row_num) and (max_allowed_continuous_nan_num < nan_include_row_num):
+                nan_include_row_num = 0
+            elif (self.nan_check_per_row(new_df.iloc[i, :col_num_except_foot_marker]) == 0) and (0 == nan_include_row_num):
+                pass
+
+        print("interpolating for removing nan in foot marker")
+        nan_include_row_num = 0
+        for i in tqdm(range(new_df_rows_number)):
+            if self.nan_check_per_row(new_df.iloc[i, col_num_except_foot_marker:]):
+                nan_include_row_num += 1
+            elif (self.nan_check_per_row(new_df.iloc[i, col_num_except_foot_marker:]) == 0) and (1 <= nan_include_row_num) and (nan_include_row_num <= max_allowed_continuous_nan_num ):
+                new_df = self.interpolation_foot_marker(new_df, i, nan_include_row_num, col_num_except_foot_marker, new_df_cols_number)
+                nan_include_row_num = 0
+            elif (self.nan_check_per_row(new_df.iloc[i, col_num_except_foot_marker:]) == 0) and (1 <= nan_include_row_num) and (max_allowed_continuous_nan_num < nan_include_row_num):
+                nan_include_row_num = 0
+            elif (self.nan_check_per_row(new_df.iloc[i, col_num_except_foot_marker:]) == 0) and (0 == nan_include_row_num):
+                pass
 
         return new_df
 

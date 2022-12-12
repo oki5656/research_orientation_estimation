@@ -32,6 +32,7 @@ weight_path = os.path.join("..", "images", "trial23_MAE6.44142_MDE202.69628_lr0.
 sequence_length = 21
 hidden_size = 13
 num_layers = 8
+nhead = 3
 batch_size = 8
 ##########################################################################################################################
 output_dim = 3 # 進行方向ベクトルの要素数
@@ -41,7 +42,7 @@ args = parser.parse_args()
 
 # mode; setting
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length, args.input_shift)
+model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, nhead, output_dim, sequence_length, args.input_shift)
 model = model.float()
 model.to(device)
 model.load_state_dict(torch.load(weight_path))

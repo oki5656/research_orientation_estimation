@@ -24,14 +24,15 @@ from models import choose_model, MODEL_DICT
 
 parser = argparse.ArgumentParser(description='training argument')
 ##########################################################################################################################
-parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
+parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
 parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
 parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
-weight_path = os.path.join("..", "images", "trial23_MAE6.44142_MDE202.69628_lr0.000553_batch_size_8_num_layers8_hiddensize60_seq21_pred33.pth")
-sequence_length = 21
-hidden_size = 13
-num_layers = 8
+weight_path = os.path.join("..", "images", "2212081618_lstm_seq15_pred57", "trial18_MAE10.88619_MDE500.63548_lr0.005615_batch8_nhead3_num_layers5_hiddensize46_seq15_pred57.pth")
+sequence_length = 15
+hidden_size = 46
+num_layers = 5
+nhead = 3
 batch_size = 8
 ##########################################################################################################################
 output_dim = 3 # 進行方向ベクトルの要素数
@@ -41,7 +42,7 @@ args = parser.parse_args()
 
 # mode; setting
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, output_dim, sequence_length, args.input_shift)
+model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, nhead, output_dim, sequence_length, args.input_shift)
 model = model.float()
 model.to(device)
 model.load_state_dict(torch.load(weight_path))

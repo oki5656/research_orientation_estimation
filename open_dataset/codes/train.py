@@ -7,9 +7,11 @@ import sys
 print(os.path.dirname(sys.executable))
 ########################################################################
 
+import re
 import math
 import random
 import json
+import glob
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -27,20 +29,33 @@ from distutils.util import strtobool
 from models import choose_model, MODEL_DICT
 
 #############################################  config  ##################################################
-img_save_path = os.path.join("..", "images")
+img_save_path = os.path.join("..", "images3")
 # train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
-# test_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+# val_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD", "mix", "data1", "syn", "mix_slow_imu3_vi3_handheld_imu235_vi235.csv")#最近まで使ってた8/17
-train_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "sum_Take20220809_083159001and003nan_removed.csv")
+train_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "sum_train_20220809_001and003_nan_under15_nan_removed.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu3_vi3.csv")
-# test_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")#最近まで使ってた8/17
-test_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
-# test_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
+# val_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu4_vi4.csv")#最近まで使ってた8/17
+val_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_val_20220809_002_nan_under15_nan_removed.csv")
+# val_data_path = os.path.join("..","datasets", "oxford_IOD", "slow walking", "data1", "syn", "concate_imu4_vi4.csv")
+test_data_path = os.path.join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_test_20220809_002_nan_under15_nan_removed.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z']
 # selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 Non_duplicate_length = 10
+parser = argparse.ArgumentParser(description='training argument')
+parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
+parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
+parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
+parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
+parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
+parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
+parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
+parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
+# parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
+args = parser.parse_args()
+save_dir_path= ""
 #########################################################################################################
 
 
@@ -185,9 +200,104 @@ def TransWithQuatP2P(batch_t_df_np, batch_size, sequence_length, pred_future_tim
     return dir_vec
 
 
+def search_best_MAE_weight_file(save_dir_path):
+    """重みファイルが保存されるフォルダから一番結果が良い（MAEが最小）重みファイルを抽出する
+    Args: 
+        save_dir_path: 重みファイルが保存されるフォルダ
+    Return: 
+        test_data_weight_path: 一番結果が良い重みファイルのパス
+    """
+    wild_weight_path = join(save_dir_path, "*.pth")
+    weight_path_list = glob.glob(wild_weight_path)
+    assert 1 <= len(weight_path_list), "There is no weight file. You should check weight path." 
+    test_data_weight_path = ""
+    Best_MAE = 360
+    for i in range(len(weight_path_list)):
+        weight_file_name = os.path.basename(weight_path_list[i])
+        if "MAE" in weight_file_name:
+            MAE = float(re.search(r'MAE(.+)_MDE', weight_file_name).group(1))
+            if MAE < Best_MAE:
+                Best_MAE = MAE
+                test_data_weight_path = weight_path_list[i]
+
+    return test_data_weight_path
+
+
+def test():
+    """train, val, testの中のtest工程を行う。結果はtest_result.txtに記録される
+    """
+    print("\ntest starting...")
+    test_data_weight_path = search_best_MAE_weight_file(log.save_dir_path)
+    test_data_weight_file_name = os.path.basename(test_data_weight_path)
+    num_layers = int((re.search(r'num_layers(.+)_hid', test_data_weight_file_name).group(1)))
+    hidden_size = int((re.search(r'hiddensize(.+)_seq', test_data_weight_file_name).group(1)))
+    nhead = int((re.search(r'nhead(.+)_num', test_data_weight_file_name).group(1)))
+    sequence_length = args.sequence_length
+    pred_future_time = args.pred_future_time
+    output_dim = 3
+    batch_size = 8
+    test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
+    test_frame_num = len(test_x_df)
+    test_mini_data_num = int(test_frame_num/Non_duplicate_length)
+    test_use_data_num = test_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
+    test_iter_num = test_use_data_num//batch_size
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, nhead, output_dim, sequence_length, args.input_shift)
+    model = model.float()
+    model.to(device)
+    model.load_state_dict(torch.load(test_data_weight_path))
+    model.eval()
+    TestAngleErrSum = 0
+    TestDistanceErrSum = 0
+    TestLossSum = 0
+    mini_batch_test_random_list =[]
+    Non_duplicate_length_offset = np.random.randint(0, Non_duplicate_length)
+    criterion = nn.L1Loss()
+
+    test_random_num_list = random.sample(range(1, test_use_data_num + 1),
+                                        k=test_use_data_num)
+    for _ in range(batch_size):
+        mini_batch_test_random_list.append(test_random_num_list.pop())
+
+    for i in tqdm(range(test_iter_num)):
+        data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
+                                mini_batch_test_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
+                                Non_duplicate_length_offset, args.is_train_smp2foot)
+        data.to(device)
+        label.to(device)
+
+        if args.model == "transformer_encdec":
+            shift = args.input_shift
+            src = data[:sequence_length-shift, :, :]
+            tgt = data[shift:, :, :]
+            output = model(src=src.float().to(device), tgt=tgt.float().to(device))
+        elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
+            output = model(data.float().to(device))
+        else:
+            print("specify light model name")
+
+        angleErr, distanceErr = CalcAngleErr(output, label, batch_size)
+        loss = criterion(output.float().to(device), label.float().to(device))
+        TestAngleErrSum += angleErr
+        TestDistanceErrSum += distanceErr
+        TestLossSum += float(loss)
+        
+    MAE_te = TestAngleErrSum/test_iter_num
+    MDE_te = TestDistanceErrSum/test_iter_num
+    MTL_te = TestLossSum/test_iter_num
+    tqdm.write(f"Test mean angle and distance error = {MAE_te}, {MDE_te}")
+    save_file_path = join(log.save_dir_path, "test_result.txt") 
+    with open(save_file_path, 'w') as f:
+        s = f"test mean angle error: {MAE_te}"\
+            f"\ntest mean distance error:{MDE_te}"\
+            f"\ntest mean loss:{MTL_te}"
+        f.write(s)
+
+
 class Log():
     def __init__(self):
-        self.LastEpochResults = {"LastEpochTestAngleErr" : [], "LastEpochTestDistanceErr" : [], "LastEpochTestLoss" : []}
+        self.LastEpochResults = {"LastEpochValAngleErr" : [], "LastEpochValDistanceErr" : [], "LastEpochValLoss" : []}
         dt_now = datetime.datetime.now()
         self.TrainStartTime = "22" + str(dt_now.month).zfill(2) + str(dt_now.day).zfill(2) + str(dt_now.hour).zfill(2) + str(dt_now.minute).zfill(2)
 
@@ -202,56 +312,55 @@ class Log():
         else:
             with open(train_info_log_path, 'w') as f:
                 s = f"startTime:{self.TrainStartTime} model:{self.model} seq:{self.sequence_length} "\
-                    f"pred:{self.pred_future_time} maxEpoch:{self.max_epoch} \ntrain_filename:{self.train_filename} "\
-                    f"\ntest_filename:{self.test_filename} is_output_unit:{self.is_output_unit}\n"
+                    f"pred:{self.pred_future_time} maxEpoch:{self.max_epoch} is_output_unit:{self.is_output_unit}"\
+                    f"\ntrain_filename:{self.train_filename} \nval_filename:{self.val_filename}\n"
                 f.write(s)
 
 
-    def LastEpochResultLog(self, now_epoch, max_epoch, LastEpochTestAngleErr, LastEpochTestDistanceErr, LastEpochTestLoss):
+    def LastEpochResultLog(self, now_epoch, max_epoch, LastEpochValAngleErr, LastEpochValDistanceErr, LastEpochValLoss):
         """Record last epochs result every optuna trial.
-
         Args:
             now_epoch(int) : 
             max_epoch(int?) : 
-            LastEpochTestAngleErr : 
-            LastEpochTestDistanceErr : 
-            LastEpochTestLoss : 
+            LastEpochValAngleErr : 
+            LastEpochValDistanceErr : 
+            LastEpochValLoss : 
         Returns:
             none
         """
         if now_epoch == max_epoch-1:
-            self.LastEpochResults["LastEpochTestAngleErr"].append(round(LastEpochTestAngleErr, 5))
-            self.LastEpochResults["LastEpochTestDistanceErr"].append(round(LastEpochTestDistanceErr, 5))
-            self.LastEpochResults["LastEpochTestLoss"].append(round(LastEpochTestLoss, 5))
+            self.LastEpochResults["LastEpochValAngleErr"].append(round(LastEpochValAngleErr, 5))
+            self.LastEpochResults["LastEpochValDistanceErr"].append(round(LastEpochValDistanceErr, 5))
+            self.LastEpochResults["LastEpochValLoss"].append(round(LastEpochValLoss, 5))
 
 
     def LastEpochResultsShow(self):
         """ Show all last epoch result to console.
         """
-        print("LastEpochTestAngleErr : ", self.LastEpochResults["LastEpochTestAngleErr"])
-        print("LastEpochTestDistanceErr : ", self.LastEpochResults["LastEpochTestDistanceErr"])
-        print("LastEpochTestLoss : ", self.LastEpochResults["LastEpochTestLoss"])
+        print("LastEpochValAngleErr : ", self.LastEpochResults["LastEpochValAngleErr"])
+        print("LastEpochValDistanceErr : ", self.LastEpochResults["LastEpochValDistanceErr"])
+        print("LastEpochValLoss : ", self.LastEpochResults["LastEpochValLoss"])
 
 
     def AverageLastEpochResultSave(self):
-        nan_remove_last_epoch_test_angle_error = [x for x in self.LastEpochResults["LastEpochTestAngleErr"] if not math.isnan(x)]
-        nan_remove_last_epoch_test_distance_error = [x for x in self.LastEpochResults["LastEpochTestDistanceErr"] if not math.isnan(x)]
-        nan_remove_last_epoch_test_loss = [x for x in self.LastEpochResults["LastEpochTestLoss"] if not math.isnan(x)]
+        nan_remove_last_epoch_val_angle_error = [x for x in self.LastEpochResults["LastEpochValAngleErr"] if not math.isnan(x)]
+        nan_remove_last_epoch_val_distance_error = [x for x in self.LastEpochResults["LastEpochValDistanceErr"] if not math.isnan(x)]
+        nan_remove_last_epoch_val_loss = [x for x in self.LastEpochResults["LastEpochValLoss"] if not math.isnan(x)]
 
-        RankingLastEpochTestAngleError = sorted(nan_remove_last_epoch_test_angle_error)
-        RankingLastEpochTestDistanceErr = sorted(nan_remove_last_epoch_test_distance_error)
-        RankingLastEpochTestLoss = sorted(nan_remove_last_epoch_test_loss)
+        RankingLastEpochValAngleError = sorted(nan_remove_last_epoch_val_angle_error)
+        RankingLastEpochValDistanceErr = sorted(nan_remove_last_epoch_val_distance_error)
+        RankingLastEpochValLoss = sorted(nan_remove_last_epoch_val_loss)
 
-        average_last_epoch_test_angle_error = round(mean(RankingLastEpochTestAngleError[:5]), 5)
-        average_last_epoch_test_distance_error = round(mean(RankingLastEpochTestDistanceErr[:5]), 5)
-        average_last_epoch_test_loss = round(mean(RankingLastEpochTestLoss[:5]), 5)
+        average_last_epoch_val_angle_error = round(mean(RankingLastEpochValAngleError[:5]), 5)
+        average_last_epoch_val_distance_error = round(mean(RankingLastEpochValDistanceErr[:5]), 5)
+        average_last_epoch_val_loss = round(mean(RankingLastEpochValLoss[:5]), 5)
         save_file_path = join(self.train_info_dir_path, "last_epoch_average.txt")
         with open(save_file_path, 'w') as f:
-            s = f"average_last_epoch_test_angle_error:{average_last_epoch_test_angle_error}"\
-                f"\naverage_last_epoch_test_distance_error:{average_last_epoch_test_distance_error}"\
-                f"\naverage_last_epoch_test_loss:{average_last_epoch_test_loss}"
+            s = f"average_last_epoch_val_angle_error:{average_last_epoch_val_angle_error}"\
+                f"\naverage_last_epoch_val_distance_error:{average_last_epoch_val_distance_error}"\
+                f"\naverage_last_epoch_val_loss:{average_last_epoch_val_loss}"
             f.write(s)
-        # return average_last_epoch_test_angle_error, average_last_epoch_test_distance_error, average_last_epoch_test_loss 
+        # return average_last_epoch_val_angle_error, average_last_epoch_val_distance_error, average_last_epoch_val_loss 
 
 
     def LastEpochResultSave(self, save_path):
@@ -263,17 +372,6 @@ class Log():
 
 
 def main(trial):
-    parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--weight_save', type=strtobool, default=True, help='specify weight file save(True) or not(False).')
-    parser.add_argument('--model', type=str, default="transformer_encdec", help=f'choose model from {MODEL_DICT.keys()}')
-    parser.add_argument('--epoch', type=int, default=100, help='specify epochs number')
-    parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
-    parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
-    parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
-    parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
-    parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
-    # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
-    args = parser.parse_args()
 
     if args.model == "transformer_encdec":
         hidden_size = 10
@@ -296,10 +394,11 @@ def main(trial):
     img_save_flag = False#fixed
 
     train_x_df, train_t_df = dataloader(train_data_path, selected_train_columns, selected_correct_columns)
-    test_x_df, test_t_df = dataloader(test_data_path, selected_train_columns, selected_correct_columns)
+    val_x_df, val_t_df = dataloader(val_data_path, selected_train_columns, selected_correct_columns)
+    
     train_frame_num = len(train_x_df)
-    test_frame_num = len(test_x_df)
-
+    val_frame_num = len(val_x_df)
+    
     # 基本
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, nhead, output_dim, sequence_length, args.input_shift)
@@ -309,15 +408,16 @@ def main(trial):
     optimizer = SGD(model.parameters(), lr=lr)
     # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=8, eta_min=lr*0.01, last_epoch=- 1, verbose=True)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20, 40], gamma=0.5) # 10 < 20 < 40
-    old_test_accurancy=0
+
     TrainAngleErrResult = []
-    TestAngleErrResult = []
+    ValAngleErrResult = []
     TrainDistanceErrResult = []
-    TestDistanceErrResult = []
+    ValDistanceErrResult = []
     TrainLossResult = []
-    TestLossResult = []
+    ValLossResult = []
     train_mini_data_num = int(train_frame_num/Non_duplicate_length)
-    test_mini_data_num = int(test_frame_num/Non_duplicate_length)
+    val_mini_data_num = int(val_frame_num/Non_duplicate_length)
+    
     BestMAE = 360
     BestMDE = 100000
     log.sequence_length = args.sequence_length
@@ -334,9 +434,11 @@ def main(trial):
 
     # イテレーション数計算
     train_use_data_num = train_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
-    test_use_data_num = test_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
+    val_use_data_num = val_mini_data_num - (sequence_length+pred_future_time)//Non_duplicate_length - 2
+    
     train_iter_num = train_use_data_num//batch_size
-    test_iter_num = test_use_data_num//batch_size
+    val_iter_num = val_use_data_num//batch_size
+    
     print(
     f"max_epoch:{args.epoch}, model_name:{args.model}, batch_size:{batch_size}, hidden_size:{hidden_size}, "\
     f"num_layers:{num_layers}, sequence_length:{sequence_length}, pred_future_time:"\
@@ -352,14 +454,13 @@ def main(trial):
         Non_duplicate_length_offset = np.random.randint(0, Non_duplicate_length)
         train_random_num_list = random.sample(range(1, train_use_data_num + 1),
                                               k=train_use_data_num)
-        test_random_num_list = random.sample(range(1, test_use_data_num + 1),
-                                             k=test_use_data_num)
+        val_random_num_list = random.sample(range(1, val_use_data_num + 1),
+                                             k=val_use_data_num)
 
         # iteration loop
         model.train()
         for i in tqdm(range(train_iter_num)):
             optimizer.zero_grad()
-            # make mini batch random list
             mini_batch_train_random_list =[]
             for _ in range(batch_size):
                 mini_batch_train_random_list.append(train_random_num_list.pop())
@@ -377,8 +478,6 @@ def main(trial):
                 src = data[:sequence_length-shift, :, :]
                 tgt = data[shift:, :, :]
                 output = model(src=src.float().to(device), tgt=tgt.float().to(device))
-                # output = output.contiguous().view(-1, output.size(-1))
-                # print("output.shape", output.shape)
                 # output = output.contiguous().view(-1, output.size(-1))
             elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
                 output = model(data.float().to(device))
@@ -405,55 +504,51 @@ def main(trial):
         TrainDistanceErrResult.append(MDE_tr)
         tqdm.write(f"train mean angle and distance error = {MAE_tr}[度], {MDE_tr}[m]")
 
-        # test
+        # validation
         model.eval()
-        TestAngleErrSum = 0
-        TestDistanceErrSum = 0
-        TestLossSum = 0
-        mini_batch_test_random_list =[]
+        ValAngleErrSum = 0
+        ValDistanceErrSum = 0
+        ValLossSum = 0
+        mini_batch_val_random_list =[]
         for _ in range(batch_size):
-            mini_batch_test_random_list.append(test_random_num_list.pop())
+            mini_batch_val_random_list.append(val_random_num_list.pop())
 
-        for i in tqdm(range(test_iter_num)):
-            data, label = MakeBatch(test_x_df, test_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
-                                    mini_batch_test_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
+        for i in tqdm(range(val_iter_num)):
+            data, label = MakeBatch(val_x_df, val_t_df, batch_size, sequence_length, selected_train_columns, selected_correct_columns,
+                                    mini_batch_val_random_list, pred_future_time, args.is_output_unit, Non_duplicate_length,
                                     Non_duplicate_length_offset, args.is_train_smp2foot)
             data.to(device)
             label.to(device)
 
             if args.model == "transformer_encdec":
-                # src = data[:30, :, :]
-                # tgt = data[1:, :, :]
                 src = data[:sequence_length-shift, :, :]
                 tgt = data[shift:, :, :]
                 output = model(src=src.float().to(device), tgt=tgt.float().to(device))
                 # output = output.contiguous().view(-1, output.size(-1))
-                # print("output.shape", output.shape)
             elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
                 output = model(data.float().to(device))
-                # print("output.shape", output.shape)
             else:
                 print("specify light model name")
 
             angleErr, distanceErr = CalcAngleErr(output, label, batch_size)# decimal.Decimal(CalcAngleErr(output, label, batch_size))
             loss = criterion(output.float().to(device), label.float().to(device))
-            TestAngleErrSum += angleErr
-            TestDistanceErrSum += distanceErr
-            TestLossSum += float(loss)
+            ValAngleErrSum += angleErr
+            ValDistanceErrSum += distanceErr
+            ValLossSum += float(loss)
             
-        TestLossResult.append(loss.cpu().detach().numpy())
-        MAE_te = TestAngleErrSum/test_iter_num
-        MDE_te = TestDistanceErrSum/test_iter_num
-        MTL_te = TestLossSum/test_iter_num
-        TestAngleErrResult.append(MAE_te)
-        TestDistanceErrResult.append(MDE_te)
+        ValLossResult.append(loss.cpu().detach().numpy())
+        MAE_te = ValAngleErrSum/val_iter_num
+        MDE_te = ValDistanceErrSum/val_iter_num
+        MTL_te = ValLossSum/val_iter_num
+        ValAngleErrResult.append(MAE_te)
+        ValDistanceErrResult.append(MDE_te)
         log.LastEpochResultLog(epoch, args.epoch, MAE_te, MDE_te, MTL_te) 
-        tqdm.write(f"Test mean angle and distance error = {MAE_te}, {MDE_te}")
+        tqdm.write(f"Validation mean angle and distance error = {MAE_te}, {MDE_te}")
         BestMAE = min(BestMAE, MAE_te)
         BestMDE = min(BestMDE, MDE_te)
         if BestMAE == MAE_te:
             img_save_flag = True
-        tqdm.write(f"Best mean absolute test error, mean distance error = {BestMAE}, {BestMDE}")
+        tqdm.write(f"Best mean absolute validation error, mean distance error = {BestMAE}, {BestMDE}")
 
     # graph plotting
     fig = plt.figure(figsize = [9.0, 6.0])# [横幅, 高さ]
@@ -466,15 +561,15 @@ def main(trial):
     ax1.plot(TrainAngleErrResult)
     ax2.plot(TrainDistanceErrResult)
     ax3.plot(TrainLossResult)
-    ax4.plot(TestAngleErrResult)
-    ax5.plot(TestDistanceErrResult)
-    ax6.plot(TestLossResult)
+    ax4.plot(ValAngleErrResult)
+    ax5.plot(ValDistanceErrResult)
+    ax6.plot(ValLossResult)
     ax1.set_title("train angle error")
     ax2.set_title("train distance error")
     ax3.set_title("train loss")
-    ax4.set_xlabel("test angle error")
-    ax5.set_xlabel("test distance error")
-    ax6.set_xlabel("test loss")
+    ax4.set_xlabel("validation angle error")
+    ax5.set_xlabel("validation distance error")
+    ax6.set_xlabel("validation loss")
     # ax1.set_ylim(0, 50)
     # ax2.set_ylim(0, 0.6)
     # ax3.set_ylim(0, 0.5)
@@ -483,21 +578,21 @@ def main(trial):
     # ax6.set_ylim(0, 0.5)
 
     log.train_filename = os.path.splitext(os.path.basename(train_data_path))[0]
-    log.test_filename = os.path.splitext(os.path.basename(test_data_path))[0]
+    log.val_filename = os.path.splitext(os.path.basename(val_data_path))[0]
     log.BestMAE = str(f"{BestMAE:.02f}")
     
     StartTime = log.TrainStartTime
     
     dir_name = f"{StartTime}_{args.model}_seq{sequence_length}_pred{pred_future_time}"
     dir_name = dir_name.replace(".", "").replace(" ", "").replace("-", "")
-    dir_path = join(img_save_path, dir_name)
-    os.makedirs(dir_path, exist_ok=True)
+    log.save_dir_path = join(img_save_path, dir_name)
+    os.makedirs(log.save_dir_path, exist_ok=True)
 
-    train_info_log_path = join(dir_path, "train_info_log.txt")
-    log.train_info_dir_path = dir_path
+    train_info_log_path = join(log.save_dir_path, "train_info_log.txt")
+    log.train_info_dir_path = log.save_dir_path
     log.train_info_log(train_info_log_path)
     log.LastEpochResultsShow()
-    log.LastEpochResultSave(dir_path)
+    log.LastEpochResultSave(log.save_dir_path)
 
     # trialごとにweight fileをsaveする
     rounded_mae = round(MAE_te, 5)
@@ -519,8 +614,8 @@ if __name__ == '__main__':
     cwd = os.getcwd()
     print("now directory is", cwd)
     log = Log()
-    # analysis = AnalysisLastEpochAverage()
     TRIAL_NUM = 25
     study = optuna.create_study()
     study.optimize(main, n_trials=TRIAL_NUM)
     log.AverageLastEpochResultSave()
+    test()

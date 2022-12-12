@@ -257,7 +257,7 @@ class PreprocessMocapFile(object):
 
 
     def interpolation_all_process(self, new_df, new_df_rows_number, new_df_cols_number):
-        """
+        """pandas.dataframeのfoot marker部分の列とそれ以外の列に分けて、1行にnanが存在するか判定し線形補間を行う。
         Args :
             new_df(pandas.dataframe) : include imu maker and calcurated foot maker information
             new_df_cols_number(int) : number of new_df columns

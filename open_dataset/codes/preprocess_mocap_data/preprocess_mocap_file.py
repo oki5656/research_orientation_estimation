@@ -12,14 +12,14 @@ from argparse import ArgumentParser, Namespace
 
 
 #######################################################################################################
-csv_file_path = join("..", "datasets", "large_space", "mocap", "top_buttom_cut", "Take 2022-08-09 08.31.59 PM_001_v1_topbuttom_cut.csv")
-new_csv_file_folder_path = join("..", "datasets", "large_space", "mocap", "foot_maker_processed_15row_interpolation")
+csv_file_path = join("..", "datasets", "large_space", "mocap", "top_buttom_cut", "Take 2022-08-09 08.31.59 PM_003_v1_topbuttom_cut.csv")
+new_csv_file_folder_path = join("..", "datasets", "large_space", "mocap", "foot_maker_processed_0row_interpolation")
 new_csv_file_name = os.path.splitext(os.path.basename(csv_file_path))[0] + "_foot_maker_processed_nan_remain_test.csv"
 XYZorQuaternion = "Quaternion"
 NotRowsNumber = 3 # not value exept for columns name. For example, imu 6F512D5A17D511EDA5E3221A4204BB97, Rotation.
 Smp_maker_number = 3
 OkSameMakerDistance = 50
-max_allowed_continuous_nan_num = 15
+max_allowed_continuous_nan_num = 0
 #######################################################################################################
 cwd = os.getcwd()
 print("now directory is", cwd)

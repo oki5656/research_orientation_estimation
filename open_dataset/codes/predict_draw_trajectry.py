@@ -18,11 +18,8 @@ parser.add_argument('--model', type=str, default="lstm", help=f'choose model fro
 # parser.add_argument('-s', '--sequence_length', type=int, default=21, help='select train data sequence length')
 # parser.add_argument('-p', '--pred_future_time', type=int, default=12, help='How many seconds later would you like to predict?')
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
-test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
-# weight_path = os.path.join("..", "images", "2211021545_transformer_encdec_seq21_pred33_trial25_epoch100_unitfalse_trainsum_Take20220809_083159001and003nan_removed_testTake20220809_083159pm_002nan_removed",
-#                            "trial23_MAE6.44.pth")
-# weight_path = join("..", "images", "2211110002_transformer_encdec_seq15_pred21",
-#                            "trial23_MAE5.14978_MDE138.07636_lr0.000102_batch_size_8_num_layers3_hiddensize38_seq15_pred21.pth")
+# test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
+test_data_path = join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_test_20220809_002_nan_under15_nan_removed.csv")
 weight_path = join("..", "images", "2211140648_lstm_seq27_pred21", "trial13_MAE3.00714_MDE70.11617_lr0.001630_batch_size_8_num_layers3_hiddensize76_seq27_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 sequence_length = 27
@@ -31,8 +28,8 @@ hidden_size = 76
 num_layers = 3
 batch_size = 8
 nhead = 3
-test_data_start_col = 30*(360)
-# test_data_start_col = 30*(310)
+# test_data_start_col = 30*(360)
+test_data_start_col = 30*65
 predicted_frequency = 1 # means test data is used 1 in selected "value" lines
 number_of_predict_position = 30*60
 ##########################################################################################################################

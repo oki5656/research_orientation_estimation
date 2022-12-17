@@ -12,6 +12,7 @@ def create_movie(dir_path):
         im = cv.imread(photo_name)
         outfh.write(im)
     outfh.release()
+    print("Done.")
 
 if __name__ == '__main__':
-    create_movie('test1_1129_1619/')
+    create_movie('../experiment_result/test_field_experiment/test7_1209_1916_no_block/')

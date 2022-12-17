@@ -5,6 +5,7 @@ import re
 import math
 import random
 import json
+import time
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -13,9 +14,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from os.path import join
-import decimal
-import optuna
-import datetime
 import argparse
 from distutils.util import strtobool
 
@@ -45,22 +43,30 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers, nhead, output_dim, sequence_length, args.input_shift)
 model = model.float()
 model.to(device)
-model.load_state_dict(torch.load(weight_path))
+# model.load_state_dict(torch.load(weight_path))
 
 # predict
 data = torch.rand((sequence_length, batch_size, 6)).to(device)
-print("input data", data)
+print("input shape: ", data.shape)
 if args.model == "transformer_encdec":
     shift = args.input_shift
+    
     src = data[:sequence_length-shift, :, :]
     tgt = data[shift:, :, :]
+    time_sta = time.time()
     output = model(src=src.float().to(device), tgt=tgt.float().to(device))
+    time_end = time.time()
     # output = output.contiguous().view(-1, output.size(-1))
     # print("output.shape", output.shape)
     # output = output.contiguous().view(-1, output.size(-1))
 elif args.model == "lstm" or args.model == "transformer_enc" or args.model == "imu_transformer":
+    time_sta = time.time()
     output = model(data.float().to(device))
+    time_end = time.time()
     # print("output.shape", output.shape)
 else:
     print(" specify light model name")
-print("output", output)
+
+print("output shape: ", output.shape)
+tim = time_end- time_sta
+print(round(tim, 5), "sec")

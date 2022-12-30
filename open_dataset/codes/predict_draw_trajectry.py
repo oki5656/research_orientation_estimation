@@ -25,6 +25,7 @@ parser.add_argument('--input_shift', type=int, default=1, help='specify input (s
 test_data_path = join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_test_20220809_002_nan_under15_nan_removed.csv")
 weight_path = join("..", "images3", "2212171935_lstm_seq21_pred21", "trial7_MAE4.37658_MDE97.31165_lr0.018569_batch8_nhead3_num_layers4_hiddensize71_seq21_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
+_2Dor3D = "2D"
 sequence_length = 21
 pred_future_frame =21
 hidden_size = 71
@@ -190,7 +191,39 @@ def calc_err(outputs, corrects):
     return color_list
 
 
-def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
+def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
+    color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
+    for i in range(number_of_predict_position):
+        color_list.insert(0, [0, 0, 0])
+
+    # 描画
+    world_foot_positions = np.array(world_foot_positions)/1000
+    world_pred_next_step_positions = np.array(world_pred_next_step_positions)/1000
+    color_list = np.array(color_list)/255
+    x = np.concatenate([world_foot_positions[:, 0], world_pred_next_step_positions[:, 0]])
+    y = np.concatenate([world_foot_positions[:, 2], world_pred_next_step_positions[:, 2]])
+    # z = np.concatenate([world_foot_positions[:, 2], world_pred_next_step_positions[:, 2]])
+    # fig = plt.figure()
+    fig, ax = plt.subplots(figsize=(10,8))
+
+    # ax.scatter(x, y, z, vmin=0, vmax=1, c=color_list, marker = ".")
+    max_range = np.array([x.max()-x.min(), y.max()-y.min()]).max() * 0.5+1
+    mid_x = (x.max()+x.min()) * 0.5
+    mid_y = (y.max()+y.min()) * 0.5
+    # mid_z = (z.max()+z.min()) * 0.5
+    ax.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax.set_xlabel("[m]")
+    ax.set_ylabel("[m]")
+
+    for idx, c in enumerate(color_list):
+        ax.plot(x[idx], y[idx], 'bo', color=c, marker = ".")
+    ax.legend(loc="upper left")
+    plt.grid()
+    plt.show()
+
+
+def draw_trajectry_3D(world_foot_positions, world_pred_next_step_positions):
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
     for i in range(number_of_predict_position):
         color_list.insert(0, [0, 0, 0])
@@ -223,7 +256,11 @@ def main():
     train_x_df, train_t_df = data_loader(test_data_path, selected_train_columns, selected_correct_columns,
                                          test_data_start_col)
     world_foot_positions, world_pred_next_step_positions = predict(train_x_df, train_t_df)
-    draw_trajectry(world_foot_positions, world_pred_next_step_positions)
+    if _2Dor3D == "2D":
+        draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions)
+    elif _2Dor3D == "3D":
+        draw_trajectry_3D(world_foot_positions, world_pred_next_step_positions)
+
     print(f"max error: {max_error}\nmin error: {min_error}")
 
 main()

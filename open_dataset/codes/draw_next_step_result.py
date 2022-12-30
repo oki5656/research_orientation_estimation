@@ -33,8 +33,8 @@ class DrawNextStepResult():
 
         self.weight_path_list = []
         self.weight_path_list.append(args.weight_path1)
-        self.weight_path_list.append(args.weight_path2)
-        self.weight_path_list.append(args.weight_path3)
+        # self.weight_path_list.append(args.weight_path2)
+        # self.weight_path_list.append(args.weight_path3)
         
         self.csv_path = args.csv_path
         self.drawed_img_dir = args.drawed_img_dir
@@ -97,7 +97,7 @@ class DrawNextStepResult():
         if "num_layer" in weight_file_name: 
             num_layer = int(re.search(r'num_layers(.+)_hid', weight_file_name).group(1))
         if "nhead" in weight_file_name:
-            nhead = int(re.search(r'nhead(.+)_', weight_file_name).group(1))
+            nhead = int(re.search(r'nhead(.+)_num', weight_file_name).group(1))
         else:
             nhead = self.nhead
 
@@ -255,12 +255,12 @@ if __name__ == '__main__':
     print("now directory is", cwd)
 
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--weight_path1', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images/2211140648_lstm_seq27_pred21/trial13_MAE3.00714_MDE70.11617_lr0.001630_batch_size_8_num_layers3_hiddensize76_seq27_pred21.pth", help='specify weight file path 1.')
+    parser.add_argument('--weight_path1', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images3/2212171935_lstm_seq21_pred21/trial7_MAE4.37658_MDE97.31165_lr0.018569_batch8_nhead3_num_layers4_hiddensize71_seq21_pred21.pth", help='specify weight file path 1.')
     parser.add_argument('--weight_path2', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images/2211221722_lstm_seq21_pred33/trial22_MAE4.88546_MDE137.91135_lr0.004426_batch_size_8_num_layers4_hiddensize45_seq21_pred33.pth", help='specify weight file path 2.')
     parser.add_argument('--weight_path3', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images/2211281428_lstm_seq15_pred45/trial21_MAE5.08919_MDE222.3561_lr0.006873_batch_size_8_num_layers4_hiddensize44_seq15_pred45.pth", help='specify weight file path 3.')
-    parser.add_argument('--csv_path', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test7_1209_1916_no_block/cut_ooki2_sensorlog_20221209_191652.csv", help='specify csv file path.')
-    parser.add_argument('--images_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test7_1209_1916_no_block/cut_images", help='specify images folder path.')
-    parser.add_argument('--drawed_img_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test7_1209_1916_no_block/drawed_img_multi_model", help='specify drawed images folder path.')
+    parser.add_argument('--csv_path', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test16_corner_fast/cut_corner_fast_ooki_sensorlog_20221225_173307.csv", help='specify csv file path.')
+    parser.add_argument('--images_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test16_corner_fast/cut_images", help='specify images folder path.')
+    parser.add_argument('--drawed_img_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test16_corner_fast/drawed_img_single_model", help='specify drawed images folder path.')
     parser.add_argument('--model', type=str, default="lstm", help=f'choose model from {MODEL_DICT.keys()}')
     parser.add_argument('--hidden_size', type=int, default=76, help='select hidden size of LSTM')
     parser.add_argument('-l', '--num_layer', type=int, default=3, help='select number of layer for LSTM')
@@ -268,8 +268,8 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input_shift', type=int, default=1, help='select number of input shift Transformer')
     parser.add_argument('-s', '--sequence_length', type=int, default=27, help='select train data sequence length')
     parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How many seconds later would you like to predict?')
-    parser.add_argument('--horizontal_img_range', type=float, default=36.1, help='horizontal image range')
-    parser.add_argument('--vertical_img_range', type=float, default=58.7, help='horizontal image range')
+    parser.add_argument('--horizontal_img_range', type=float, default=36.2, help='horizontal image range')
+    parser.add_argument('--vertical_img_range', type=float, default=63.1, help='horizontal image range')
     parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 
     args = parser.parse_args()

@@ -15,4 +15,4 @@ def create_movie(dir_path):
     print("Done.")
 
 if __name__ == '__main__':
-    create_movie('../experiment_result/test_field_experiment/test7_1209_1916_no_block/')
+    create_movie('../experiment_result/test_field_experiment/test16_corner_fast/')

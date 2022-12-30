@@ -12,11 +12,11 @@ imu_position_colmuns = ["imu_position_x", "imu_position_y", "imu_position_z"]
 position_columns = {"foot": foot_position_columns, "imu": imu_position_colmuns}
 ###########################################################################################################
 csv_path = join("..", "datasets", "large_space", "nan_removed", "interpolation_under_15",
-                               "harf_test_20220809_002_nan_under15_nan_removed.csv")
+                               "harf_val_20220809_002_nan_under15_nan_removed.csv")
 imu_or_foot = "imu"
 dataset_frequency = 30
-start_frame = 30*(5)
-draw_length = 30*(10)
+start_frame = 30*(0)
+draw_length = 9188#30*(10)
 ###########################################################################################################
 
 

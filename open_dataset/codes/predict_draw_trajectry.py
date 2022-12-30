@@ -1,7 +1,10 @@
 # 次歩推定軌跡とその真値を描画する
 # 入力にはweight_file, sequence_length, pred_future_frame, hidden_size, num_layers, batch_size, nheadなどが必要
 # 描画をスタートするフレームNo, 描画するフレーム数，何フレームに１フレームを描画するかが設定できる
+# コンソールに距離誤差のmax, minが出力される
 
+import os
+import re
 import torch
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -20,23 +23,36 @@ parser.add_argument('--model', type=str, default="lstm", help=f'choose model fro
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
 # test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 test_data_path = join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_test_20220809_002_nan_under15_nan_removed.csv")
-weight_path = join("..", "images", "2211140648_lstm_seq27_pred21", "trial13_MAE3.00714_MDE70.11617_lr0.001630_batch_size_8_num_layers3_hiddensize76_seq27_pred21.pth")
+weight_path = join("..", "images3", "2212171935_lstm_seq21_pred21", "trial7_MAE4.37658_MDE97.31165_lr0.018569_batch8_nhead3_num_layers4_hiddensize71_seq21_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
-sequence_length = 27
+sequence_length = 21
 pred_future_frame =21
-hidden_size = 76
-num_layers = 3
+hidden_size = 71
+num_layers = 4
 batch_size = 8
 nhead = 3
-# test_data_start_col = 30*(360)
+# test_data_start_col = 30*0
 test_data_start_col = 30*65
 predicted_frequency = 1 # means test data is used 1 in selected "value" lines
 number_of_predict_position = 30*60
+# number_of_predict_position = 9188-21-21
 ##########################################################################################################################
 output_dim = 3 # 進行方向ベクトルの要素数
+max_error =0
+min_error = 99999999
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ', 'imu_position_x', 'imu_position_y', 'imu_position_z']
 args = parser.parse_args()
+weight_file_name = os.path.basename(weight_path)
+
+if "hiddensize" in weight_file_name:
+    hidden_size = int(re.search(r'hiddensize(.+)_seq', weight_file_name).group(1))
+if "num_layer" in weight_file_name: 
+    num_layer = int(re.search(r'num_layers(.+)_hid', weight_file_name).group(1))
+if "nhead" in weight_file_name:
+    nhead = int(re.search(r'nhead(.+)_num', weight_file_name).group(1))
+if "seq" in weight_file_name:
+    sequence_length = int(re.search(r'seq(.+)_pre', weight_file_name).group(1))
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = choose_model(args.model, len(selected_train_columns), hidden_size, num_layers,
@@ -161,10 +177,13 @@ def calc_err(outputs, corrects):
         RGB_list: 
     """
     color_list = []
-
+    global min_error
+    global max_error 
     for i in range(number_of_predict_position):
         output, correct = outputs[i], corrects[i]
         dis_err = calc_distance(output, correct)
+        min_error = min(dis_err, min_error)
+        max_error = max(dis_err, max_error)
         rgb = convert_err2RGB(dis_err)
         color_list.append(rgb)
 
@@ -198,7 +217,6 @@ def draw_trajectry(world_foot_positions, world_pred_next_step_positions):
     ax.set_ylabel("[m]")
     ax.set_zlabel("[m]")
     plt.show()
-    pass
 
 
 def main():
@@ -206,5 +224,6 @@ def main():
                                          test_data_start_col)
     world_foot_positions, world_pred_next_step_positions = predict(train_x_df, train_t_df)
     draw_trajectry(world_foot_positions, world_pred_next_step_positions)
+    print(f"max error: {max_error}\nmin error: {min_error}")
 
 main()

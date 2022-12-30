@@ -155,10 +155,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='training argument')
 
-    parser.add_argument('--images_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/images", help='specify images folder path.')
-    parser.add_argument('--drawed_img_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/drawed_landmarks", help='specify drawed images folder path.')
-    parser.add_argument('--horizontal_img_range', type=float, default=36.1, help='horizontal image range')
-    parser.add_argument('--vertical_img_range', type=float, default=58.7, help='horizontal image range')
+    parser.add_argument('--images_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/images2", help='specify images folder path.')
+    parser.add_argument('--drawed_img_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/drawed_landmarks2", help='specify drawed images folder path.')
+    parser.add_argument('--horizontal_img_range', type=float, default=36.2, help='horizontal image range')
+    parser.add_argument('--vertical_img_range', type=float, default=63.2, help='horizontal image range')
     parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 
     args = parser.parse_args()

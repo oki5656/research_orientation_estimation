@@ -619,3 +619,4 @@ if __name__ == '__main__':
     study.optimize(main, n_trials=TRIAL_NUM)
     log.AverageLastEpochResultSave()
     test()
+    print("Done.")

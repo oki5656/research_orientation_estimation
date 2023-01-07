@@ -90,14 +90,14 @@ class DrawNextStepResult():
         return int(u), int(v)
 
 
-    def draw_next_step(self, frame, next_step_vector):
+    def draw_next_step(self, frame, next_step_vector, draw_canvas):
         """次歩推定ベクトルと座標（x, y, z）を描画する
         """
-        img_path = self.images_pathes[frame]
-        img = cv2.imread(img_path)
-        img_name = os.path.basename(img_path)
-        height, width, ch = img.shape
-        draw_canvas = np.zeros((height, width, ch))
+        # img_path = self.images_pathes[frame]
+        # img = cv2.imread(img_path)
+        # img_name = os.path.basename(img_path)
+        height, width, ch = draw_canvas.shape
+        # draw_canvas = np.zeros((height, width, ch))
 
         u, v = self.convert_next_step_position(next_step_vector, height, width)
         if 0 <= u and u < width and 0 <= v and v < height:
@@ -125,27 +125,34 @@ class DrawNextStepResult():
                 lineType=cv2.LINE_AA,
             shift=0)
 
-        cv2.putText(draw_canvas,
-            text=f'X={next_step_vector[0]}, Y={next_step_vector[1]}, Z={next_step_vector[2]}',
-            org=(20, height-20),
-            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-            fontScale=1.0,
-            color=(0, 255, 0),
-            thickness=2,
-            lineType=cv2.LINE_4)
+        # cv2.putText(draw_canvas,
+        #     text=f'X={next_step_vector[0]}, Y={next_step_vector[1]}, Z={next_step_vector[2]}',
+        #     org=(20, height-20),
+        #     fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+        #     fontScale=1.0,
+        #     color=(0, 255, 0),
+        #     thickness=2,
+        #     lineType=cv2.LINE_4)
 
-        blend_img = cv2.addWeighted(img, 0.5, draw_canvas.astype(np.uint8), 0.5, 0)
+        # blend_img = cv2.addWeighted(img, 0.5, draw_canvas.astype(np.uint8), 0.5, 0)
 
-        return blend_img, img_name
+        return draw_canvas
 
 
     def predict_draw(self):
         """次歩推定を行い次歩推定ベクトルを描画する．そしてその結果画像を保存する．
         """
+        img_path = self.images_pathes[5]
+        img = cv2.imread(img_path)
+        height, width, ch = img.shape
+        draw_canvas = np.zeros((height, width, ch))
+
         for frame in tqdm(range(self.coodinates_num)):
             next_step_vector = self.pridict(frame)
-            blend_img, img_name = self.draw_next_step(frame, next_step_vector)
-            cv2.imwrite(join(self.drawed_img_dir, img_name), blend_img)
+            draw_canvas = self.draw_next_step(frame, next_step_vector, draw_canvas)
+
+        blend_img = cv2.addWeighted(img, 0.5, draw_canvas.astype(np.uint8), 0.5, 0)
+        cv2.imwrite(join(self.drawed_img_dir, "all_position_drawed.png"), blend_img)
 
 
 if __name__ == '__main__':
@@ -156,7 +163,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training argument')
 
     parser.add_argument('--images_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/images2", help='specify images folder path.')
-    parser.add_argument('--drawed_img_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/drawed_landmarks2", help='specify drawed images folder path.')
+    parser.add_argument('--drawed_img_dir', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_draw_next_step_result/drawed_landmarks_all", help='specify drawed images folder path.')
     parser.add_argument('--horizontal_img_range', type=float, default=36.2, help='horizontal image range')
     parser.add_argument('--vertical_img_range', type=float, default=63.2, help='horizontal image range')
     parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')

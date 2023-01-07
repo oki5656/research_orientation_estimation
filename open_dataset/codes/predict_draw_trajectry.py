@@ -212,7 +212,7 @@ def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
     mid_y = (y.max()+y.min()) * 0.5
     # mid_z = (z.max()+z.min()) * 0.5
     ax.set_xlim(mid_x - max_range, mid_x + max_range)
-    ax.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax.set_ylim(mid_y - max_range + 3, mid_y + max_range - 3)
     ax.set_xlabel("[m]")
     ax.set_ylabel("[m]")
 
@@ -260,6 +260,8 @@ def main():
         draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions)
     elif _2Dor3D == "3D":
         draw_trajectry_3D(world_foot_positions, world_pred_next_step_positions)
+    else:
+        print(f"_2Dor3D you set is something wrong. You set {_2Dor3D}")
 
     print(f"max error: {max_error}\nmin error: {min_error}")
 

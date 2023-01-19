@@ -29,7 +29,7 @@ from distutils.util import strtobool
 from models import choose_model, MODEL_DICT
 
 #############################################  config  ##################################################
-img_save_path = os.path.join("..", "images3")
+img_save_path = os.path.join("..", "images5")
 # train_data_path = os.path.join("..","datasets", "TUM","dataset-room_all", "mav0", "self_made_files", "new_all_in_imu_mocap_13456.csv")
 # val_data_path = os.path.join("..","datasets", "TUM","dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 # train_data_path = os.path.join("..","datasets", "oxford_IOD","handheld", "data1", "syn", "concate_imu2_vi2.csv")
@@ -56,6 +56,8 @@ parser.add_argument('--input_shift', type=int, default=1, help='specify input (s
 # parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
 args = parser.parse_args()
 save_dir_path= ""
+Normalization_or_Not = "Normalization"
+g = 9.80665 # fixed
 #########################################################################################################
 
 
@@ -108,6 +110,24 @@ def ConvertUnitVec(dir_vec):
     return unit_dir_vec
 
 
+def acceleration_normalization(out_x):
+    """加速度を受け取り正規化（合力方向から距離が9.8分になるようにそれぞれのベクトルの要素から引く）する
+    Args: 
+        out_x : (batchsize, seq_length, 要素数)で構成される加速度と角速度シーケンス.ndarray
+    output: 
+        out_x : (batchsize, seq_length, 要素数)で構成される "正規化された" 加速度と角速度シーケンス
+    """
+    batch, seq_len, element = out_x.shape
+    for i in range(batch):
+        for j in range(seq_len):
+            l2norm = np.sqrt(out_x[i, j, 3]**2+out_x[i, j, 4]**2+out_x[i, j, 5]**2)
+            out_x[i, j, 3] -= g*out_x[i, j, 3]/l2norm
+            out_x[i, j, 4] -= g*out_x[i, j, 4]/l2norm
+            out_x[i, j, 5] -= g*out_x[i, j, 5]/l2norm
+    
+    return out_x
+
+
 def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_train_columns,
               selected_correct_columns, mini_batch_random_list, pred_future_time, is_output_unit,
               Non_duplicate_length, Non_duplicate_length_offset, is_train_smp2foot):
@@ -134,6 +154,10 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
         # out_t.append(np.array(train_t_df.loc[idx + sequence_length + pred_future_time]))
     out_x = np.array(out_x)
     out_t = np.array(out_t)
+
+    if Normalization_or_Not == "Normalization":
+        out_x = acceleration_normalization(out_x)
+
     batch_x_df_np = out_x.transpose(1, 0, 2)
     batch_t_df_np = out_t.transpose(1, 0, 2)
     # print("out_x.shape", out_x.shape)# out_x.shape (19, 30, 6)=(batch size, sequence length, x-feature num)

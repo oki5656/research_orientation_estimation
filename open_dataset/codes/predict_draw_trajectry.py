@@ -23,13 +23,13 @@ parser.add_argument('--model', type=str, default="lstm", help=f'choose model fro
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
 # test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 test_data_path = join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_test_20220809_002_nan_under15_nan_removed.csv")
-weight_path = join("..", "images3", "2212171935_lstm_seq21_pred21", "trial7_MAE4.37658_MDE97.31165_lr0.018569_batch8_nhead3_num_layers4_hiddensize71_seq21_pred21.pth")
+weight_path = join("..", "images5", "2201180522_lstm_seq27_pred21", "trial9_MAE3.98126_MDE90.82089_lr0.020077_batch8_nhead3_num_layers3_hiddensize54_seq27_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 _2Dor3D = "2D"
-sequence_length = 21
+sequence_length = 27
 pred_future_frame =21
-hidden_size = 71
-num_layers = 4
+hidden_size = 54
+num_layers = 3
 batch_size = 8
 nhead = 3
 # test_data_start_col = 30*0
@@ -37,7 +37,9 @@ test_data_start_col = 30*65
 predicted_frequency = 1 # means test data is used 1 in selected "value" lines
 number_of_predict_position = 30*60
 # number_of_predict_position = 9188-21-21
+Normalization_or_Not = "Normalization"
 ##########################################################################################################################
+g = 9.80665 # fixed
 output_dim = 3 # 進行方向ベクトルの要素数
 max_error =0
 min_error = 99999999
@@ -64,11 +66,30 @@ model.load_state_dict(torch.load(weight_path))
 model.eval()
 
 
+def acceleration_normalization(train_x_df):
+    """加速度を受け取り正規化（合力方向から距離が9.8分になるようにそれぞれのベクトルの要素から引く）する
+    Args: 
+        out_x : (batchsize, seq_length, 要素数)で構成される加速度と角速度シーケンス.ndarray
+    output: 
+        out_x : (batchsize, seq_length, 要素数)で構成される "正規化された" 加速度と角速度シーケンス
+    """
+    seq_len, element = train_x_df.shape
+    for j in range(seq_len):
+        l2norm = np.sqrt(train_x_df.iat[j, 3]**2+train_x_df.iat[j, 4]**2+train_x_df.iat[j, 5]**2)
+        train_x_df.iat[j, 3] -= g*train_x_df.iat[j, 3]/l2norm
+        train_x_df.iat[j, 4] -= g*train_x_df.iat[j, 4]/l2norm
+        train_x_df.iat[j, 5] -= g*train_x_df.iat[j, 5]/l2norm
+
+    return train_x_df
+
+
 def data_loader(path, train_columns, correct_columns, start_col):
     end_col = start_col+predicted_frequency*number_of_predict_position+sequence_length+pred_future_frame+2
     df = pd.read_csv(path)
     train_x_df = df[train_columns]
     train_t_df = df[correct_columns]
+    if Normalization_or_Not == "Normalization":
+        train_x_df = acceleration_normalization(train_x_df)
     print("type(train_x_df)", type(train_x_df))
     print("train_x_df[start_col: end_col]", train_x_df[start_col: end_col])
 

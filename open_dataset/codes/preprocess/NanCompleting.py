@@ -1,3 +1,6 @@
+# linear_complimentation_using_acc_gyro.pyを実行後、欠損を埋めるためにこのファイルを実行する
+# all_in_imu_mocap.csvをもとに欠損が保管されたnew_all_in_imu_mocap.csvを生成する
+
 from cmath import isnan
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -7,8 +10,8 @@ from tqdm import tqdm
 
 
 #############################################  config  ##################################################
-train_data_path = os.path.join("..","datasets", "dataset-room1_512_16", "mav0", "self_made_files", "all_in_imu_mocap.csv")
-new_train_data_path = os.path.join("..","datasets", "dataset-room1_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+train_data_path = os.path.join("..","datasets", "dataset-room6_512_16", "mav0", "self_made_files", "all_in_imu_mocap.csv")
+new_train_data_path = os.path.join("..","datasets", "dataset-room6_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 selected_train_columns = ['gyroX', 'gyroY', 'gyroZ', 'accX', 'accY', 'accZ']
 selected_correct_columns = ['pX', 'pY', 'pZ', 'qW', 'qX', 'qY', 'qZ']
 #########################################################################################################

@@ -10,7 +10,7 @@ from os import path
 import pandas as pd
 
 # position csvファイルパス#####################################################################################################################
-input_text_file_path=os.path.join(".." ,".." ,"datasets", "dataset-room1_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
+input_text_file_path=os.path.join(".." ,".." ,"datasets","TUM" ,"dataset-room2_512_16", "mav0", "self_made_files", "new_all_in_imu_mocap.csv")
 ##############################################################################################################################################
 
 def TransWithQuat(pX, pY, pZ, qW, qX, qY, qZ):

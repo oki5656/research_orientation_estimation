@@ -177,15 +177,15 @@ def convert_err2RGB(dis_error):
     rgb = []*3
     # if dis_error <= 10000:
     if dis_error <= 100:
-        rgb = [0, 191, 255]
+        rgb = [0, 150, 255]
     elif dis_error <= 200:
         rgb = [50, 205, 50]
     elif dis_error <= 300:
-        rgb = [255, 230, 0]
+        rgb = [255, 135, 0]
     elif dis_error <= 400:
-        rgb = [255, 130, 0]
-    elif dis_error <= 500:
-        rgb = [255, 0, 0]
+        rgb = [255, 10, 0]
+    # elif dis_error <= 400:
+    #     rgb = [255, 0, 0]
     else:
         rgb = [139, 0, 0]
     
@@ -195,6 +195,8 @@ def convert_err2RGB(dis_error):
 def calc_err(outputs, corrects):
     """Calcurate error distance from output and correct and correspond to the size of error make RGB color list.
     Args: 
+        outputs : result of next-step prediction
+        corrects : correct data of next-step prediction
     Returns: 
         RGB_list: 
     """
@@ -213,6 +215,13 @@ def calc_err(outputs, corrects):
 
 
 def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
+    """This function draw the next-step prediction result in 2D image. You can choose 2D or 3D using _2Dor3D variable.
+    Args :
+        world_foot_positions : 世界座標系で表される次歩推定位置
+        world_pred_next_step_positions : 世界座標系で表される次歩推定の正解位置
+    Returns : 
+        None
+    """
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
     for i in range(number_of_predict_position):
         color_list.insert(0, [0, 0, 0])
@@ -233,9 +242,11 @@ def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
     mid_y = (y.max()+y.min()) * 0.5
     # mid_z = (z.max()+z.min()) * 0.5
     ax.set_xlim(mid_x - max_range, mid_x + max_range)
-    ax.set_ylim(mid_y - max_range + 3, mid_y + max_range - 3)
+    ax.set_ylim(mid_y - max_range + 4, mid_y + max_range - 4)
     ax.set_xlabel("[m]")
     ax.set_ylabel("[m]")
+    plt.xticks([-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10])
+    plt.yticks([-4, -2, 0, 2, 4])
 
     for idx, c in enumerate(color_list):
         ax.plot(x[idx], y[idx], 'bo', color=c, marker = ".")
@@ -245,6 +256,13 @@ def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
 
 
 def draw_trajectry_3D(world_foot_positions, world_pred_next_step_positions):
+    """This function draw the next-step prediction result in 3D image. You can choose 2D or 3D using _2Dor3D variable.
+    Args :
+        world_foot_positions : 世界座標系で表される次歩推定位置
+        world_pred_next_step_positions : 世界座標系で表される次歩推定の正解位置
+    Returns : 
+        None
+    """
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
     for i in range(number_of_predict_position):
         color_list.insert(0, [0, 0, 0])

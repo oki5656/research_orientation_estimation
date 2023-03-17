@@ -1,5 +1,5 @@
 # 連番画像（1スタートでなくてもいいはず）から動画を作成できる
-# プログラム中の文字列をいい感じに調節して使用する
+# プログラム中のパスを調節して使用してください
 
 import glob
 import cv2 as cv
@@ -15,4 +15,4 @@ def create_movie(dir_path):
     print("Done.")
 
 if __name__ == '__main__':
-    create_movie('../experiment_result/field_experiment/corner/ishii2/')
+    create_movie('../experiment_result/test_field_experiment/test16_corner_fast/')

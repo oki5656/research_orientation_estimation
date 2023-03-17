@@ -1,9 +1,11 @@
-# このファイルではデータセットを用いLSTMで学習を行う
+# このファイルではTUM, oxford_IOD, Large spaceデータセットのいずれかを用いて学習を行う．
+# 使用可能な学習モデルはtransformer, lstmの2種類である．
+# optunaの仕様によりハイパラ調整は自動的に行われる．
+
 ########################################################################
-from genericpath import isfile
+# from genericpath import isfile
 import os
 import sys
-# a=os.path.dirname(sys.executable)
 print(os.path.dirname(sys.executable))
 ########################################################################
 
@@ -53,7 +55,6 @@ parser.add_argument('-p', '--pred_future_time', type=int, default=33, help='How 
 parser.add_argument("--is_output_unit", type=str, default="false", help='select output format from unit vector or normal vector(including distance)')
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
-# parser.add_argument('-t', '--trial_num', type=int, default=30, help='select optuna trial number')
 args = parser.parse_args()
 save_dir_path= ""
 Normalization_or_Not = "Normalization"
@@ -70,6 +71,10 @@ def dataloader(path, train_columns, correct_columns):
 
 
 def CalcAngle(NowPosi, EstDir, CorrDir):
+    """次歩推定位置ベクトルと正解位置ベクトルから角度誤差を算出する
+    Returns : 
+        theta_deg : 角度誤差(度)
+    """
     L1, L2, D, cos_theta, theta = 0, 0, 0, 0, 0
     L1 = math.sqrt((0 - EstDir[0])**2 + (0 - EstDir[1])**2 + (0 - EstDir[2])**2)
     L2 = math.sqrt((0 - CorrDir[0])**2 + (0 - CorrDir[1])**2 + (0 - CorrDir[2])**2)
@@ -82,15 +87,20 @@ def CalcAngle(NowPosi, EstDir, CorrDir):
 
 
 def CalcAngleErr(output, label, batch_size):
+    """平均角度誤差を算出する
+    Args : 
+        output : 次歩推定ベクトル
+        label : 次歩推定ベクトルの正解データ
+        batch_size : バッチサイズ
+    Returns : 
+        angleErrSum/batch_size : 平均角度誤差
+        distanceErrSum/batch_size : 平均距離誤差
+    """
     angleErrSum = 0.0
     distanceErrSum = 0.0
-    # print("label.shape", label.shape) # torch.Size([32, 3]) = (batch size, outout feature num)
-    # print("output.shape", output.shape) # (sequence, batch size, outout feature num)
     for i in range(batch_size):
         angleErr = CalcAngle(label[i, :], output[i, :], label[i, :])# とりあえずsequenceのidxは1。後でmodelの出力経形式を要検討。# for transformer2 
         angleErrSum += angleErr
-        # angleErrSum += CalcAngle(label[i, :], output[0, i, :], label[i, :])# とりあえずsequenceのidxは1。後でmodelの出力経形式を要検討。# for lstm
-        # distanceErrSum += math.sqrt((label[i, 0] - output[0, i, 0])**2 + (label[i, 1] -  output[0, i, 1])**2 + (label[i, 2] -  output[0, i, 2])**2) # for lstm
         distanceErr = math.sqrt((label[i, 0] - output[i, 0])**2 + (label[i, 1] -  output[i, 1])**2 + (label[i, 2] -  output[i, 2])**2) # for transformer2
         distanceErrSum += distanceErr
 
@@ -98,9 +108,10 @@ def CalcAngleErr(output, label, batch_size):
 
 
 def ConvertUnitVec(dir_vec):
+    """単位ベクトルを算出する
+    """
     batch_size, _ = dir_vec.shape
     unit_dir_vec = np.empty((batch_size, 3))
-    # unit_dir_vec = [[0]*3 for j in range(batch_size)]
     for i in range(batch_size):
         bunbo = math.sqrt(dir_vec[i][0]**2 + dir_vec[i][1]**2 + dir_vec[i][2]**2) + 0.0000000000000000001
         unit_dir_vec[i][0] = dir_vec[i][0]/bunbo
@@ -151,7 +162,6 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
         idx = mini_batch_random_list[i]*Non_duplicate_length + Non_duplicate_length_offset
         out_x.append(np.array(train_x_df[idx : idx + sequence_length]))
         out_t.append(np.array(train_t_df[idx + sequence_length - 1: idx + sequence_length + pred_future_time]))
-        # out_t.append(np.array(train_t_df.loc[idx + sequence_length + pred_future_time]))
     out_x = np.array(out_x)
     out_t = np.array(out_t)
 
@@ -177,7 +187,7 @@ def MakeBatch(train_x_df, train_t_df, batch_size, sequence_length, selected_trai
 
 
 def TransWithQuatSMP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time):
-    """
+    """現在のスマートフォン位置から未来の足の位置を予測する際の正解ベクトルを算出する．
     Returns : 
         dirvec (ndarray) : 現在スマホ位置から未来すらわちpred_future_timeの足の位置への方向ベクトル
     """
@@ -202,13 +212,12 @@ def TransWithQuatSMP2P(batch_t_df_np, batch_size, sequence_length, pred_future_t
 
 
 def TransWithQuatP2P(batch_t_df_np, batch_size, sequence_length, pred_future_time):
-    """
+    """現在のスマホの位置から未来のスマホの位置を予測する際の正解ベクトルを算出する．
     Returns : 
-    dirvec (ndarray) : 現在位置(px, py, pz)から未来位置(px, py, pz)への方向ベクトル。px, py, pzを予測する
+        dirvec (ndarray) : 現在位置(px, py, pz)から未来位置(px, py, pz)への方向ベクトル。px, py, pzを予測する
     """
     dir_vec = np.ones((batch_size, 3))
     # print("batch_t_df_np.shape", batch_t_df_np.shape) # (now to future length, batch size, t-feature num)
-    # dir_vec = np.ones((sequence_length, batch_size, 3))
 
     for j in range(batch_size):
         qW, qX, qY, qZ = batch_t_df_np[0][j][3], batch_t_df_np[0][j][4], batch_t_df_np[0][j][5], batch_t_df_np[0][j][6]
@@ -218,7 +227,7 @@ def TransWithQuatP2P(batch_t_df_np, batch_size, sequence_length, pred_future_tim
         corr_dir_vec = np.array([batch_t_df_np[pred_future_time][j][0] - batch_t_df_np[0][j][0],
                                  batch_t_df_np[pred_future_time][j][1] - batch_t_df_np[0][j][1],
                                  batch_t_df_np[pred_future_time][j][2] - batch_t_df_np[0][j][2]])#２点(現在とpred_future_time)の位置から進行方向ベクトルを求めた
-        smh_dir_vec = np.matmul(E.T, corr_dir_vec.T)##############################  転地するかも。スマートフォン座標系進行方向ベクトル生成。
+        smh_dir_vec = np.matmul(E.T, corr_dir_vec.T)
         dir_vec[j][0], dir_vec[j][1], dir_vec[j][2] = smh_dir_vec[0], smh_dir_vec[1], smh_dir_vec[2]
 
     return dir_vec
@@ -367,6 +376,7 @@ class Log():
 
 
     def AverageLastEpochResultSave(self):
+        """最後の5epochの平均を算出し、txtファイルに保存する"""
         nan_remove_last_epoch_val_angle_error = [x for x in self.LastEpochResults["LastEpochValAngleErr"] if not math.isnan(x)]
         nan_remove_last_epoch_val_distance_error = [x for x in self.LastEpochResults["LastEpochValDistanceErr"] if not math.isnan(x)]
         nan_remove_last_epoch_val_loss = [x for x in self.LastEpochResults["LastEpochValLoss"] if not math.isnan(x)]
@@ -384,7 +394,6 @@ class Log():
                 f"\naverage_last_epoch_val_distance_error:{average_last_epoch_val_distance_error}"\
                 f"\naverage_last_epoch_val_loss:{average_last_epoch_val_loss}"
             f.write(s)
-        # return average_last_epoch_val_angle_error, average_last_epoch_val_distance_error, average_last_epoch_val_loss 
 
 
     def LastEpochResultSave(self, save_path):
@@ -396,7 +405,6 @@ class Log():
 
 
 def main(trial):
-
     if args.model == "transformer_encdec":
         hidden_size = 10
         num_layers = 5
@@ -509,7 +517,7 @@ def main(trial):
             else:
                 print(" specify light model name")
 
-            angleErr, distanceErr = CalcAngleErr(output, label, batch_size) # decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            angleErr, distanceErr = CalcAngleErr(output, label, batch_size)
             angleErrSum += angleErr
             distanceErrSum += distanceErr
             
@@ -517,7 +525,7 @@ def main(trial):
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.data # ??????????????? todo : loss.dataとlossの違いは？
+            running_loss += loss.data
         scheduler.step()
         TrainLossResult.append(loss.cpu().detach().numpy())
 
@@ -554,7 +562,7 @@ def main(trial):
             else:
                 print("specify light model name")
 
-            angleErr, distanceErr = CalcAngleErr(output, label, batch_size)# decimal.Decimal(CalcAngleErr(output, label, batch_size))
+            angleErr, distanceErr = CalcAngleErr(output, label, batch_size)
             loss = criterion(output.float().to(device), label.float().to(device))
             ValAngleErrSum += angleErr
             ValDistanceErrSum += distanceErr

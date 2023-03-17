@@ -23,13 +23,13 @@ parser.add_argument('--model', type=str, default="lstm", help=f'choose model fro
 parser.add_argument('--input_shift', type=int, default=1, help='specify input (src, tgt) shift size for transformer_encdec.')
 # test_data_path = join("..","datasets", "large_space", "nan_removed", "Take20220809_083159pm_002nan_removed.csv")
 test_data_path = join("..","datasets", "large_space", "nan_removed", "interpolation_under_15", "harf_test_20220809_002_nan_under15_nan_removed.csv")
-weight_path = join("..", "images3", "2212171935_lstm_seq21_pred21", "trial7_MAE4.37658_MDE97.31165_lr0.018569_batch8_nhead3_num_layers4_hiddensize71_seq21_pred21.pth")
+weight_path = join("..", "images5", "2201180522_lstm_seq27_pred21", "trial9_MAE3.98126_MDE90.82089_lr0.020077_batch8_nhead3_num_layers3_hiddensize54_seq27_pred21.pth")
 parser.add_argument("--is_train_smp2foot", type=str, default="true", help='select training Position2Position or smpPosition2footPosition')
 _2Dor3D = "2D"
-sequence_length = 21
+sequence_length = 27
 pred_future_frame =21
-hidden_size = 71
-num_layers = 4
+hidden_size = 54
+num_layers = 3
 batch_size = 8
 nhead = 3
 # test_data_start_col = 30*0
@@ -37,7 +37,9 @@ test_data_start_col = 30*65
 predicted_frequency = 1 # means test data is used 1 in selected "value" lines
 number_of_predict_position = 30*60
 # number_of_predict_position = 9188-21-21
+Normalization_or_Not = "Normalization"
 ##########################################################################################################################
+g = 9.80665 # fixed
 output_dim = 3 # 進行方向ベクトルの要素数
 max_error =0
 min_error = 99999999
@@ -64,11 +66,30 @@ model.load_state_dict(torch.load(weight_path))
 model.eval()
 
 
+def acceleration_normalization(train_x_df):
+    """加速度を受け取り正規化（合力方向から距離が9.8分になるようにそれぞれのベクトルの要素から引く）する
+    Args: 
+        out_x : (batchsize, seq_length, 要素数)で構成される加速度と角速度シーケンス.ndarray
+    output: 
+        out_x : (batchsize, seq_length, 要素数)で構成される "正規化された" 加速度と角速度シーケンス
+    """
+    seq_len, element = train_x_df.shape
+    for j in range(seq_len):
+        l2norm = np.sqrt(train_x_df.iat[j, 3]**2+train_x_df.iat[j, 4]**2+train_x_df.iat[j, 5]**2)
+        train_x_df.iat[j, 3] -= g*train_x_df.iat[j, 3]/l2norm
+        train_x_df.iat[j, 4] -= g*train_x_df.iat[j, 4]/l2norm
+        train_x_df.iat[j, 5] -= g*train_x_df.iat[j, 5]/l2norm
+
+    return train_x_df
+
+
 def data_loader(path, train_columns, correct_columns, start_col):
     end_col = start_col+predicted_frequency*number_of_predict_position+sequence_length+pred_future_frame+2
     df = pd.read_csv(path)
     train_x_df = df[train_columns]
     train_t_df = df[correct_columns]
+    if Normalization_or_Not == "Normalization":
+        train_x_df = acceleration_normalization(train_x_df)
     print("type(train_x_df)", type(train_x_df))
     print("train_x_df[start_col: end_col]", train_x_df[start_col: end_col])
 
@@ -156,15 +177,15 @@ def convert_err2RGB(dis_error):
     rgb = []*3
     # if dis_error <= 10000:
     if dis_error <= 100:
-        rgb = [0, 191, 255]
+        rgb = [0, 150, 255]
     elif dis_error <= 200:
         rgb = [50, 205, 50]
     elif dis_error <= 300:
-        rgb = [255, 230, 0]
+        rgb = [255, 135, 0]
     elif dis_error <= 400:
-        rgb = [255, 130, 0]
-    elif dis_error <= 500:
-        rgb = [255, 0, 0]
+        rgb = [255, 10, 0]
+    # elif dis_error <= 400:
+    #     rgb = [255, 0, 0]
     else:
         rgb = [139, 0, 0]
     
@@ -174,6 +195,8 @@ def convert_err2RGB(dis_error):
 def calc_err(outputs, corrects):
     """Calcurate error distance from output and correct and correspond to the size of error make RGB color list.
     Args: 
+        outputs : result of next-step prediction
+        corrects : correct data of next-step prediction
     Returns: 
         RGB_list: 
     """
@@ -192,6 +215,13 @@ def calc_err(outputs, corrects):
 
 
 def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
+    """This function draw the next-step prediction result in 2D image. You can choose 2D or 3D using _2Dor3D variable.
+    Args :
+        world_foot_positions : 世界座標系で表される次歩推定位置
+        world_pred_next_step_positions : 世界座標系で表される次歩推定の正解位置
+    Returns : 
+        None
+    """
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
     for i in range(number_of_predict_position):
         color_list.insert(0, [0, 0, 0])
@@ -212,9 +242,11 @@ def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
     mid_y = (y.max()+y.min()) * 0.5
     # mid_z = (z.max()+z.min()) * 0.5
     ax.set_xlim(mid_x - max_range, mid_x + max_range)
-    ax.set_ylim(mid_y - max_range + 3, mid_y + max_range - 3)
+    ax.set_ylim(mid_y - max_range + 4, mid_y + max_range - 4)
     ax.set_xlabel("[m]")
     ax.set_ylabel("[m]")
+    plt.xticks([-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10])
+    plt.yticks([-4, -2, 0, 2, 4])
 
     for idx, c in enumerate(color_list):
         ax.plot(x[idx], y[idx], 'bo', color=c, marker = ".")
@@ -224,6 +256,13 @@ def draw_trajectry_2D(world_foot_positions, world_pred_next_step_positions):
 
 
 def draw_trajectry_3D(world_foot_positions, world_pred_next_step_positions):
+    """This function draw the next-step prediction result in 3D image. You can choose 2D or 3D using _2Dor3D variable.
+    Args :
+        world_foot_positions : 世界座標系で表される次歩推定位置
+        world_pred_next_step_positions : 世界座標系で表される次歩推定の正解位置
+    Returns : 
+        None
+    """
     color_list = calc_err(world_foot_positions, world_pred_next_step_positions)
     for i in range(number_of_predict_position):
         color_list.insert(0, [0, 0, 0])

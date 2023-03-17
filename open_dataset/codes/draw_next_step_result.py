@@ -40,8 +40,11 @@ class DrawNextStepResult():
         self.drawed_img_dir = args.drawed_img_dir
         self.images_dir = args.images_dir
         self.all_frame_num = 0
+        self.g = 9.80665 # fixed
+        self.Normalization_or_Not = "Normalization"
         self.images_pathes = glob.glob(join(self.images_dir, "*"))
-        self.selected_IMU_columns = ['X_acc', 'Y_acc', 'Z_acc', 'X_ang', 'Y_ang', 'Z_ang']
+        # self.selected_IMU_columns = ['X_acc', 'Y_acc', 'Z_acc', 'X_ang', 'Y_ang', 'Z_ang']
+        self.selected_IMU_columns = ['X_ang', 'Y_ang', 'Z_ang', 'X_acc', 'Y_acc', 'Z_acc']
         self.df = self.dataloader(self.csv_path)
 
 
@@ -68,6 +71,23 @@ class DrawNextStepResult():
         return df
 
 
+    def acceleration_normalization(self, imu):
+        """加速度を受け取り正規化（合力方向から距離が9.8分になるようにそれぞれのベクトルの要素から引く）する
+        Args: 
+            out_x : (batchsize, seq_length, 要素数)で構成される加速度と角速度シーケンス.ndarray
+        output: 
+            out_x : (batchsize, seq_length, 要素数)で構成される "正規化された" 加速度と角速度シーケンス
+        """
+        seq_len, element = imu.shape
+        for j in range(seq_len):
+            l2norm = np.sqrt(imu[j, 3]**2+imu[j, 4]**2+imu[j, 5]**2)
+            imu[j, 3] -= self.g*imu[j, 3]/l2norm
+            imu[j, 4] -= self.g*imu[j, 4]/l2norm
+            imu[j, 5] -= self.g*imu[j, 5]/l2norm
+    
+        return imu
+
+
     def load_imu(self, frame, weight_file_name):
         """frameを受け取ってbatch_x_df_np(sequence_length, batch_size, input_size)を返す
         Args : 
@@ -80,6 +100,8 @@ class DrawNextStepResult():
         else:
             sequence_length = self.sequence_length
         imu = np.array(self.df[frame - sequence_length: frame])
+        if self.Normalization_or_Not == "Normalization":
+            imu = self.acceleration_normalization(imu)
 
         return imu
 
@@ -169,7 +191,7 @@ class DrawNextStepResult():
         height, width, _ = img.shape
 
         color_list = [
-                        (0, 191, 255),
+                        (0, 120, 238),
                         (50, 205, 50), 
                         (255, 130, 0), 
                         (255, 0, 0)
@@ -255,7 +277,7 @@ if __name__ == '__main__':
     print("now directory is", cwd)
 
     parser = argparse.ArgumentParser(description='training argument')
-    parser.add_argument('--weight_path1', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images3/2212171935_lstm_seq21_pred21/trial7_MAE4.37658_MDE97.31165_lr0.018569_batch8_nhead3_num_layers4_hiddensize71_seq21_pred21.pth", help='specify weight file path 1.')
+    parser.add_argument('--weight_path1', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images5/2201180522_lstm_seq27_pred21/trial9_MAE3.98126_MDE90.82089_lr0.020077_batch8_nhead3_num_layers3_hiddensize54_seq27_pred21.pth", help='specify weight file path 1.')
     parser.add_argument('--weight_path2', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images/2211221722_lstm_seq21_pred33/trial22_MAE4.88546_MDE137.91135_lr0.004426_batch_size_8_num_layers4_hiddensize45_seq21_pred33.pth", help='specify weight file path 2.')
     parser.add_argument('--weight_path3', type=str, default= "C:/Users/admin/Desktop/orientation_estimation/open_dataset/images/2211281428_lstm_seq15_pred45/trial21_MAE5.08919_MDE222.3561_lr0.006873_batch_size_8_num_layers4_hiddensize44_seq15_pred45.pth", help='specify weight file path 3.')
     parser.add_argument('--csv_path', type=str, default="C:/Users/admin/Desktop/orientation_estimation/open_dataset/experiment_result/test_field_experiment/test16_corner_fast/cut_corner_fast_ooki_sensorlog_20221225_173307.csv", help='specify csv file path.')

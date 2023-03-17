@@ -1,5 +1,6 @@
 # research_orientation_estimation
 本リポジトリは，次歩推定の学習や学習結果のvisualizeが可能となっている．  
+mainブランチが最新版です．
 
 ## installation
 #### 動作確認環境
